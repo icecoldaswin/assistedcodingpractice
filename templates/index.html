@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern Engine | Deep Work IDE</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;700;900&display=swap');
+        
+        body { background: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; overflow: hidden; }
+        
+        /* Layout Components */
+        .monaco-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 220px; }
+        .code-main-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 450px; }
+        #terminal { background: #000; color: #10b981; font-family: 'Fira Code', monospace; font-size: 11px; scrollbar-width: thin; }
+        
+        /* Tab & Navigation Styling */
+        .file-tab { border-right: 1px solid #1e293b; transition: all 0.2s; }
+        .active-file-tab { background: #0f172a; border-bottom: 2px solid #3b82f6; color: white !important; }
+        .view-mode-btn { padding-bottom: 8px; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; transition: all 0.2s; }
+        .view-mode-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
+        
+        /* Step Typography */
+        .step-header { font-size: 10px; font-weight: 900; color: #475569; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .step-num { color: #3b82f6; margin-right: 8px; }
+
+        /* Custom Scrollbar */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+    </style>
+</head>
+<body class="flex h-screen w-screen">
+
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col">
+        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+            <h1 class="font-black text-xl tracking-tighter text-blue-500 italic">PATTERN_</h1>
+            <button onclick="toggleModal(true)" class="bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full font-bold flex items-center justify-center transition">+</button>
+        </div>
+        <div id="sidebarList" class="flex-1 overflow-y-auto p-4 space-y-2 custom-scroll">
+            </div>
+        <div class="p-4 bg-slate-950 border-t border-slate-800">
+            <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Engine Standby</div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col relative bg-slate-950">
+        <div id="tabsHeader" class="flex h-12 bg-slate-900 border-b border-slate-800 overflow-x-auto no-scrollbar">
+            </div>
+
+        <div id="activeContent" class="flex-1 flex flex-col overflow-hidden hidden">
+            
+            <div class="p-6 border-b border-slate-900 bg-slate-900/20">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 id="viewTitle" class="text-2xl font-black text-white tracking-tight"></h2>
+                    <div class="flex gap-4">
+                        <button onclick="setView('workbook')" id="btn-workbook" class="view-mode-btn view-mode-active">Workbook</button>
+                        <button onclick="setView('reference')" id="btn-reference" class="view-mode-btn">AI Reference</button>
+                    </div>
+                </div>
+                <div id="descriptionBox" class="text-sm text-slate-400 max-h-32 overflow-y-auto custom-scroll prose prose-invert prose-sm max-w-none border-t border-slate-800 pt-4 italic">
+                    </div>
+            </div>
+
+            <div id="workbookView" class="flex-1 overflow-y-auto p-8 custom-scroll">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
+                    <div>
+                        <div class="step-header">
+                            <div><span class="step-num">01</span> Absorption & Constraints</div>
+                            <button onclick="validateStep('s1', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                        </div>
+                        <div id="editor-s1" class="monaco-container"></div>
+                        <div id="feedback-s1" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
+                    </div>
+                    <div>
+                        <div class="step-header">
+                            <div><span class="step-num">02</span> Pattern Hunt & Data Structures</div>
+                            <button onclick="validateStep('s2', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                        </div>
+                        <div id="editor-s2" class="monaco-container"></div>
+                        <div id="feedback-s2" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
+                    </div>
+                    <div>
+                        <div class="step-header">
+                            <div><span class="step-num">03</span> Logical Flow (Pseudocode)</div>
+                            <button onclick="validateStep('s3', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                        </div>
+                        <div id="editor-s3" class="monaco-container"></div>
+                        <div id="feedback-s3" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
+                    </div>
+                    <div>
+                        <div class="step-header">
+                            <div><span class="step-num">04.1</span> Dry Run & Edge Cases</div>
+                            <button onclick="validateStep('s4', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                        </div>
+                        <div id="editor-s4" class="monaco-container"></div>
+                        <div id="feedback-s4" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
+                    </div>
+                </div>
+
+                <div class="space-y-4 pb-20">
+                    <div class="flex justify-between items-end mb-2">
+                        <div class="flex items-center gap-4">
+                            <div class="step-header mb-0" style="margin-bottom: 0;"><span class="step-num">04.2</span> Implementation</div>
+                            <select id="langSelect" onchange="generateBoilerplate(this.value)" class="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-black uppercase px-2 py-1 rounded outline-none cursor-pointer hover:border-blue-500 transition">
+                                <option value="python">Python</option>
+                                <option value="java">Java</option>
+                                <option value="javascript">JavaScript</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Get AI Tests</button>
+                            <button onclick="runCode()" class="bg-green-600 text-white px-6 py-1 rounded font-black text-[10px] uppercase hover:bg-green-500 transition">Run Logic</button>
+                        </div>
+                    </div>
+                    <div id="editor-code" class="code-main-container"></div>
+                    <pre id="terminal" class="w-full h-32 p-4 rounded-xl border border-slate-800 overflow-auto shadow-inner"></pre>
+                </div>
+            </div>
+
+            <div id="referenceView" class="flex-1 overflow-y-auto p-8 custom-scroll hidden">
+                <div class="max-w-4xl mx-auto space-y-8">
+                    <div class="p-8 bg-slate-900 border border-slate-800 rounded-2xl">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-black text-blue-500 text-xs uppercase tracking-widest">AI Strategy Analysis</h3>
+                            <button onclick="askGemini()" class="bg-blue-600 px-4 py-1 rounded text-[10px] font-black uppercase">Refresh Analysis</button>
+                        </div>
+                        <div id="aiAnalysisBody" class="prose prose-invert prose-blue max-w-none text-slate-300 text-sm">
+                            Click 'Refresh' to let Gemini analyze the optimal patterns for this problem.
+                        </div>
+                    </div>
+                    <div>
+                        <div class="step-header">Generated Unit Tests</div>
+                        <div id="editor-tests" class="monaco-container" style="height: 400px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-800">
+            <p class="font-black text-xs uppercase tracking-[0.5em]">No Active Workspace</p>
+        </div>
+    </main>
+
+    <div id="initModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[500]">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-[550px] shadow-2xl">
+            <h3 class="text-xl font-black text-white mb-6 tracking-tighter italic">OPEN NEW PROBLEM</h3>
+            
+            <div class="relative mb-4">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Search Catalog</label>
+                <input type="text" id="lcSearch" oninput="doSearch(this.value)" autocomplete="off"
+                       placeholder="Start typing..." 
+                       class="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500 transition">
+                <div id="lcResults" class="hidden absolute left-0 right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl max-h-48 overflow-auto z-[510]"></div>
+            </div>
+
+            <div class="flex justify-end gap-4 mt-8">
+                <button onclick="toggleModal(false)" class="text-slate-500 font-bold uppercase text-[10px] px-4">Cancel</button>
+                <button id="modalBtn" onclick="initSession()" class="bg-blue-600 px-10 py-3 rounded-xl font-black text-xs text-white hover:bg-blue-500 transition">INITIALIZE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tabs = {}, activeTabId = null, editors = {}, allProblems = [], lcMap = {}, saveTimeout = null;
+
+        // --- 1. BOOTSTRAP ---
+        window.onload = function() {
+            const boot = () => {
+                if (typeof require !== 'undefined') {
+                    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+                    require(['vs/editor/editor.main'], () => {
+                        loadState();
+                        fetchProblemList();
+                    });
+                } else { setTimeout(boot, 100); }
+            };
+            boot();
+        };
+
+        async function fetchProblemList() {
+            const res = await fetch('/get_leetcode_problems');
+            allProblems = await res.json();
+        }
+
+        // --- 2. SEARCH & INIT ---
+        function doSearch(q) {
+            const resDiv = document.getElementById('lcResults');
+            if(q.length < 2) return resDiv.classList.add('hidden');
+            const matches = allProblems.filter(p => p.title.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
+            resDiv.innerHTML = matches.map(p => `
+                <div onclick="selectProblem('${p.title.replace(/'/g, "\\'")}', '${p.titleSlug}')" class="p-4 border-b border-slate-700 cursor-pointer text-sm font-bold flex justify-between hover:bg-blue-600 hover:text-white transition">
+                    <span>${p.title}</span>
+                    <span class="opacity-30 text-[10px] font-mono">${p.titleSlug}</span>
+                </div>`).join('');
+            resDiv.classList.remove('hidden');
+        }
+
+        function selectProblem(t, s) {
+            document.getElementById('lcSearch').value = t;
+            lcMap[t] = s;
+            document.getElementById('lcResults').classList.add('hidden');
+        }
+
+        async function initSession() {
+            const btn = document.getElementById('modalBtn');
+            const title = document.getElementById('lcSearch').value || "Manual Session";
+            const slug = lcMap[title];
+            let statement = "Manual problem description...";
+
+            if(slug) {
+                btn.innerText = "SCRAPING...";
+                const res = await fetch('/get_problem_details', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({slug}) });
+                const d = await res.json();
+                statement = d.content;
+            }
+
+            const id = 'tab-' + Date.now();
+            tabs[id] = { 
+                id, title, statement, 
+                steps: { s1:'', s2:'', s3:'', s4:'', code: 'def solve(input_data):\n    return None', tests: '# AI Tests' },
+                aiAnalysis: ''
+            };
+            
+            addSidebarItem(id, title);
+            selectTab(id);
+            toggleModal(false);
+            triggerSave();
+            btn.innerText = "INITIALIZE";
+        }
+
+        // --- 3. EDITOR & VIEW MGMT ---
+        function selectTab(id) {
+            activeTabId = id;
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('activeContent').classList.remove('hidden');
+            document.getElementById('viewTitle').innerText = tabs[id].title;
+            document.getElementById('descriptionBox').innerHTML = tabs[id].statement;
+            
+            // Safely initialize the steps object if it doesn't exist from an older save state
+            if (!tabs[id].steps) {
+                tabs[id].steps = {};
+            }
+
+            // Re-init editors for the new tab
+            const setupEd = (domId, key, lang) => {
+                const dom = document.getElementById(domId);
+                dom.innerHTML = '';
+                const ed = monaco.editor.create(dom, {
+                    value: tabs[id].steps[key] || '',
+                    language: lang, theme: 'vs-dark',
+                    automaticLayout: true, minimap: {enabled: false}, fontSize: 13
+                });
+                ed.onDidChangeModelContent(() => { tabs[id].steps[key] = ed.getValue(); triggerSave(); });
+                editors[`${id}_${key}`] = ed;
+            };
+
+            setupEd('editor-s1', 's1', 'markdown'); setupEd('editor-s2', 's2', 'markdown');
+            setupEd('editor-s3', 's3', 'markdown'); setupEd('editor-s4', 's4', 'markdown');
+            setupEd('editor-code', 'code', tabs[id].lang || 'python'); setupEd('editor-tests', 'tests', tabs[id].lang || 'python');
+            
+            const sel = document.getElementById('langSelect');
+            if(sel) sel.value = tabs[id].lang || 'python';
+
+            if(tabs[id].aiAnalysis) document.getElementById('aiAnalysisBody').innerHTML = marked.parse(tabs[id].aiAnalysis);
+            else document.getElementById('aiAnalysisBody').innerHTML = "Click 'Refresh' to analyze.";
+
+            renderTabs();
+            setView('workbook');
+        }
+
+        function setView(mode) {
+            document.getElementById('workbookView').classList.toggle('hidden', mode !== 'workbook');
+            document.getElementById('referenceView').classList.toggle('hidden', mode !== 'reference');
+            document.getElementById('btn-workbook').classList.toggle('view-mode-active', mode === 'workbook');
+            document.getElementById('btn-reference').classList.toggle('view-mode-active', mode === 'reference');
+        }
+
+        // --- 4. AI & RUN ---
+        async function askGemini() {
+            const body = document.getElementById('aiAnalysisBody');
+            body.innerHTML = "<p class='animate-pulse text-blue-400 font-bold'>ANALYZING PATTERNS...</p>";
+            const res = await fetch('/solve', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({problem: tabs[activeTabId].statement}) });
+            const d = await res.json();
+            tabs[activeTabId].aiAnalysis = d.analysis;
+            body.innerHTML = marked.parse(d.analysis);
+            triggerSave();
+        }
+
+        async function validateStep(stepKey, btn) {
+            const originalText = btn.innerText;
+            btn.innerText = "VALIDATING...";
+            btn.classList.add('animate-pulse');
+            const feedbackDiv = document.getElementById(`feedback-${stepKey}`);
+            if (feedbackDiv) feedbackDiv.classList.add('hidden');
+            
+            try {
+                const content = editors[`${activeTabId}_${stepKey}`].getValue();
+                const res = await fetch('/validate_step', { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({
+                        statement: tabs[activeTabId].statement,
+                        step: stepKey,
+                        content: content
+                    }) 
+                });
+
+                const contentType = res.headers.get("content-type");
+                if (!res.ok || !contentType || !contentType.includes("application/json")) {
+                    throw new Error("Server returned an invalid HTML response. Is the Python route implemented?");
+                }
+
+                const d = await res.json();
+                
+                const newContent = d.enriched_content || d.content || d.result || d.text;
+                if (newContent && newContent !== content) {
+                    editors[`${activeTabId}_${stepKey}`].setValue(newContent);
+                    tabs[activeTabId].steps[stepKey] = newContent;
+                    triggerSave();
+                }
+
+                if (d.feedback) {
+                    feedbackDiv.innerHTML = marked.parse(d.feedback);
+                    feedbackDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error("Validation failed:", e);
+                if (feedbackDiv) {
+                    feedbackDiv.innerHTML = `<span class="text-red-400 font-bold">Error:</span> <span class="text-red-300">${e.message}</span>`;
+                    feedbackDiv.classList.remove('hidden');
+                }
+            } finally {
+                btn.innerText = originalText;
+                btn.classList.remove('animate-pulse');
+            }
+        }
+
+        async function generateBoilerplate(lang) {
+            const term = document.getElementById('terminal');
+            term.innerText = `>>> Generating ${lang} boilerplate...`;
+
+            try {
+                const res = await fetch('/generate_boilerplate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        statement: tabs[activeTabId].statement,
+                        language: lang
+                    })
+                });
+
+                const text = await res.text();
+
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch {
+                    throw new Error("Non-JSON response:\n" + text.slice(0, 200));
+                }
+
+                if (data.code) {
+                    const ed = editors[`${activeTabId}_code`];
+                    monaco.editor.setModelLanguage(ed.getModel(), lang);
+                    ed.setValue(data.code);
+
+                    term.innerText = ">>> Boilerplate generated.";
+                } else {
+                    term.innerText = ">>> Error: " + (data.error || "Unknown");
+                }
+
+            } catch (e) {
+                term.innerText = ">>> ERROR:\n" + e.message;
+            }
+        }
+
+        async function generateTests() {
+            document.getElementById('terminal').innerText = ">>> Gemini is generating test suite...";
+            const res = await fetch('/generate_test_data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({statement: tabs[activeTabId].statement}) });
+            const d = await res.json();
+            if(d.test_script) {
+                editors[`${activeTabId}_tests`].setValue(d.test_script);
+                tabs[activeTabId].steps.tests = d.test_script;
+                document.getElementById('terminal').innerText = ">>> Success. Tests available in 'AI Reference' tab.";
+            }
+        }
+
+        async function runCode() {
+            const term = document.getElementById('terminal');
+            term.innerText = ">>> Running safety checks...\n";
+
+            const fullScript =
+                editors[`${activeTabId}_code`].getValue() +
+                "\n\n" +
+                editors[`${activeTabId}_tests`].getValue();
+
+            // ✅ FIX: get language from dropdown
+            const selectedLang = document.getElementById('langSelect').value;
+
+            const langMap = {
+                python: "Python",
+                java: "Java",
+                javascript: "JavaScript"
+            };
+
+            try {
+                const res = await fetch('/run_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: fullScript,
+                        language: langMap[selectedLang]
+                    })
+                });
+
+                const d = await res.json();
+
+                term.innerText = d.output;
+                term.style.color = d.success ? "#10b981" : "#f87171";
+
+            } catch (e) {
+                term.innerText = "ERROR: " + e.message;
+            }
+        }
+
+        // --- 5. PERSISTENCE ---
+        function triggerSave() {
+            document.getElementById('syncStatus').innerText = "SYNCING...";
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tabs, activeTabId}) });
+                document.getElementById('syncStatus').innerText = "ENGINE SECURED";
+            }, 1000);
+        }
+
+        async function loadState() {
+            const res = await fetch('/load_workspace');
+            const data = await res.json();
+            if(data.tabs && Object.keys(data.tabs).length > 0) {
+                tabs = data.tabs;
+                Object.values(tabs).forEach(t => addSidebarItem(t.id, t.title));
+                selectTab(data.activeTabId || Object.keys(tabs)[0]);
+            }
+        }
+
+        function addSidebarItem(id, title) {
+            const item = document.createElement('div');
+            item.className = "p-3 rounded-xl text-[11px] font-bold text-slate-400 cursor-pointer transition hover:bg-slate-800 hover:text-white truncate flex items-center gap-3";
+            item.innerHTML = `<div class="w-1 h-1 rounded-full bg-slate-700"></div> ${title}`;
+            item.onclick = () => selectTab(id);
+            document.getElementById('sidebarList').appendChild(item);
+        }
+
+        function renderTabs() {
+            const h = document.getElementById('tabsHeader'); h.innerHTML = '';
+            Object.values(tabs).forEach(t => {
+                const d = document.createElement('div');
+                d.className = `px-6 flex items-center h-full text-[10px] font-black uppercase tracking-tighter cursor-pointer file-tab ${activeTabId === t.id ? 'active-file-tab' : 'text-slate-500 hover:bg-slate-800'}`;
+                d.innerHTML = `<span>${t.title}</span> <span onclick="event.stopPropagation(); closeTab('${t.id}')" class="ml-4 opacity-30 hover:opacity-100">×</span>`;
+                d.onclick = () => selectTab(t.id);
+                h.appendChild(d);
+            });
+        }
+
+        function closeTab(id) {
+            delete tabs[id]; renderTabs(); triggerSave();
+            if(activeTabId === id) location.reload();
+        }
+
+        function toggleModal(s) { document.getElementById('initModal').classList.toggle('hidden', !s); }
+    </script>
+</body>
+</html>
