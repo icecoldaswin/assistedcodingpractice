@@ -67,7 +67,7 @@
                     </div>
             </div>
 
-            <div id="workbookView" class="flex-1 overflow-y-auto p-8 custom-scroll">
+            <div id="workbookView" class="flex-1 overflow-y-auto p-8 custom-scroll" style="width: 80%;">
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
                     <div>
                         <div class="step-header">
@@ -114,7 +114,8 @@
                             </select>
                         </div>
                         <div class="flex gap-2">
-                            <button onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Get AI Tests</button>
+                            <button onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
+                            <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                             <button onclick="runCode()" class="bg-green-600 text-white px-6 py-1 rounded font-black text-[10px] uppercase hover:bg-green-500 transition">Run Logic</button>
                         </div>
                     </div>
@@ -151,12 +152,24 @@
         <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-[550px] shadow-2xl">
             <h3 class="text-xl font-black text-white mb-6 tracking-tighter italic">OPEN NEW PROBLEM</h3>
             
-            <div class="relative mb-4">
+            <div class="relative mb-6">
                 <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Search Catalog</label>
                 <input type="text" id="lcSearch" oninput="doSearch(this.value)" autocomplete="off"
                        placeholder="Start typing..." 
                        class="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500 transition">
                 <div id="lcResults" class="hidden absolute left-0 right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl max-h-48 overflow-auto z-[510]"></div>
+            </div>
+
+            <div class="flex items-center gap-4 mb-6">
+                <div class="flex-1 border-t border-slate-800"></div>
+                <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">OR</span>
+                <div class="flex-1 border-t border-slate-800"></div>
+            </div>
+
+            <div class="mb-4">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Custom Problem</label>
+                <textarea id="customStatement" placeholder="Paste your own problem description here..." rows="4"
+                       class="w-full bg-slate-950 border border-slate-700 p-4 rounded-xl text-white outline-none focus:border-blue-500 transition custom-scroll"></textarea>
             </div>
 
             <div class="flex justify-end gap-4 mt-8">
@@ -209,21 +222,30 @@
 
         async function initSession() {
             const btn = document.getElementById('modalBtn');
-            const title = document.getElementById('lcSearch').value || "Manual Session";
-            const slug = lcMap[title];
+            const searchVal = document.getElementById('lcSearch').value.trim();
+            const customVal = document.getElementById('customStatement').value.trim();
+            
+            let title = "Manual Session";
             let statement = "Manual problem description...";
 
-            if(slug) {
+            if (customVal) {
+                title = searchVal ? searchVal : "Custom Problem";
+                statement = customVal;
+            } else if (searchVal && lcMap[searchVal]) {
+                title = searchVal;
+                const slug = lcMap[title];
                 btn.innerText = "SCRAPING...";
                 const res = await fetch('/get_problem_details', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({slug}) });
                 const d = await res.json();
                 statement = d.content;
+            } else if (searchVal) {
+                title = searchVal;
             }
 
             const id = 'tab-' + Date.now();
             tabs[id] = { 
                 id, title, statement, 
-                steps: { s1:'', s2:'', s3:'', s4:'', code: 'def solve(input_data):\n    return None', tests: '# AI Tests' },
+                steps: { s1:'', s2:'', s3:'', s4:'', code: 'def solve(input_data):\n    return None', tests: '' },
                 aiAnalysis: ''
             };
             
@@ -231,12 +253,17 @@
             selectTab(id);
             toggleModal(false);
             triggerSave();
+
+            document.getElementById('lcSearch').value = '';
+            document.getElementById('customStatement').value = '';
+
             btn.innerText = "INITIALIZE";
         }
 
         // --- 3. EDITOR & VIEW MGMT ---
         function selectTab(id) {
             activeTabId = id;
+
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('activeContent').classList.remove('hidden');
             document.getElementById('viewTitle').innerText = tabs[id].title;
@@ -246,6 +273,15 @@
             if (!tabs[id].steps) {
                 tabs[id].steps = {};
             }
+
+            Object.values(editors).forEach(ed => {
+                if (ed) {
+                    const model = ed.getModel();
+                    ed.dispose();
+                    if (model) model.dispose();
+                }
+            });
+            editors = {};
 
             // Re-init editors for the new tab
             const setupEd = (domId, key, lang) => {
@@ -402,7 +438,7 @@
                 tabs[activeTabId].steps.tests = d.test_script;
                 triggerSave();
                 term.innerText = ">>> Tests generated! Executing AI Test Runner...\n";
-                await runCode();
+                await runTests();
             } else {
                 term.innerText = ">>> Error generating tests: " + (d.error || "Unknown error");
             }
@@ -410,14 +446,49 @@
 
         async function runCode() {
             const term = document.getElementById('terminal');
-            term.innerText = ">>> Running safety checks...\n";
+            term.innerText = ">>> Running logic...\n";
+
+            // Only grab the code, NO tests
+            const fullScript = editors[`${activeTabId}_code`].getValue();
+
+            // ✅ FIX: get language from dropdown
+            const selectedLang = document.getElementById('langSelect').value;
+
+            const langMap = {
+                python: "Python",
+                java: "Java",
+                javascript: "JavaScript"
+            };
+
+            try {
+                const res = await fetch('/run_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: fullScript,
+                        language: langMap[selectedLang]
+                    })
+                });
+
+                const d = await res.json();
+
+                term.innerText = d.output;
+                term.style.color = d.success ? "#10b981" : "#f87171";
+
+            } catch (e) {
+                term.innerText = "ERROR: " + e.message;
+            }
+        }
+
+        async function runTests() {
+            const term = document.getElementById('terminal');
+            term.innerText = ">>> Running code + tests...\n";
 
             const fullScript =
                 editors[`${activeTabId}_code`].getValue() +
                 "\n\n" +
                 editors[`${activeTabId}_tests`].getValue();
 
-            // ✅ FIX: get language from dropdown
             const selectedLang = document.getElementById('langSelect').value;
 
             const langMap = {
@@ -452,7 +523,7 @@
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
                 await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tabs, activeTabId}) });
-                document.getElementById('syncStatus').innerText = "ENGINE SECURED";
+                document.getElementById('syncStatus').innerText = "Changes Saved.";
             }, 1000);
         }
 
