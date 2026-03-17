@@ -380,13 +380,31 @@
         }
 
         async function generateTests() {
-            document.getElementById('terminal').innerText = ">>> Gemini is generating test suite...";
-            const res = await fetch('/generate_test_data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({statement: tabs[activeTabId].statement}) });
+            const term = document.getElementById('terminal');
+            term.innerText = ">>> Gemini is reviewing code and generating tests...\n";
+            
+            const code = editors[`${activeTabId}_code`].getValue();
+            const selectedLang = document.getElementById('langSelect') ? document.getElementById('langSelect').value : 'python';
+            const langMap = { "python": "Python", "java": "Java", "javascript": "JavaScript" };
+
+            const res = await fetch('/generate_test_data', { 
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body:JSON.stringify({
+                    statement: tabs[activeTabId].statement,
+                    code: code,
+                    language: langMap[selectedLang]
+                }) 
+            });
             const d = await res.json();
             if(d.test_script) {
                 editors[`${activeTabId}_tests`].setValue(d.test_script);
                 tabs[activeTabId].steps.tests = d.test_script;
-                document.getElementById('terminal').innerText = ">>> Success. Tests available in 'AI Reference' tab.";
+                triggerSave();
+                term.innerText = ">>> Tests generated! Executing AI Test Runner...\n";
+                await runCode();
+            } else {
+                term.innerText = ">>> Error generating tests: " + (d.error || "Unknown error");
             }
         }
 

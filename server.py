@@ -5,12 +5,15 @@ import tempfile
 import requests
 import subprocess
 import re
+import hashlib
 from google import genai
 
 app = Flask(__name__)
 
 CONFIG_PATH = "gemini_config.json"
 CACHE_FILE = 'leetcode_cache.json'
+
+safe_code_hashes = set()
 
 
 # ---------------- SAFETY LAYER ----------------
@@ -270,15 +273,45 @@ def validate_step():
 
 @app.route('/generate_test_data', methods=['POST'])
 def generate_test_data():
-    client = get_client()
-    statement = request.json.get('statement')
+    try:
+        client = get_client()
+        data = request.json
+        statement = data.get('statement')
+        code = data.get('code')
+        lang = data.get('language')
 
-    res = client.models.generate_content(
-        model="gemini-flash-latest",
-        contents=f"Generate Python test script:\n{statement}"
-    )
+        prompt = f"""
+        You are an expert SDET. Generate comprehensive unit tests for the following problem and code.
+        
+        PROBLEM: {statement}
+        LANGUAGE: {lang}
+        USER CODE: 
+        {code}
 
-    return jsonify({"test_script": res.text})
+        REQUIREMENTS:
+        1. Write a test runner script that tests multiple edge cases (empty, large, negatives, etc.).
+        2. The runner MUST print a formatted plain text tabular view of what failed/passed to stdout.
+           Example format:
+           | Test Case | Expected | Actual | Status |
+           |-----------|----------|--------|--------|
+           | [1,2]     | 3        | 3      | PASS   |
+        3. The code you return will be concatenated to the bottom of the User Code.
+        4. For Python: Write plain script logic that calls the user's function.
+        5. For JavaScript: Write plain script logic that calls the user's function.
+        6. For Java: Create a `class TestRunner {{ public static void main(String[] args) {{ ... }} }}`.
+        7. ONLY return the raw code. NO markdown formatting, NO explanations.
+        """
+
+        res = client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=prompt
+        )
+
+        test_script = res.text.replace("```python", "").replace("```javascript", "").replace("```java", "").replace("```", "").strip()
+
+        return jsonify({"test_script": test_script})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ---------------- EXECUTION (UPDATED WITH SAFETY) ----------------
@@ -288,15 +321,20 @@ def run_code():
         code = request.json.get('code')
         lang = request.json.get('language')
 
-        # ---- STATIC CHECK ----
-        ok, msg = static_code_check(code)
-        if not ok:
-            return jsonify({"output": f"[BLOCKED - STATIC]\n{msg}", "success": False})
+        code_hash = hashlib.md5(code.encode('utf-8')).hexdigest()
 
-        # ---- AI CHECK ----
-        safe, reason = ai_code_check(code)
-        if not safe:
-            return jsonify({"output": f"[BLOCKED - AI]\n{reason}", "success": False})
+        if code_hash not in safe_code_hashes:
+            # ---- STATIC CHECK ----
+            ok, msg = static_code_check(code)
+            if not ok:
+                return jsonify({"output": f"[BLOCKED - STATIC]\n{msg}", "success": False})
+
+            # ---- AI CHECK ----
+            safe, reason = ai_code_check(code)
+            if not safe:
+                return jsonify({"output": f"[BLOCKED - AI]\n{reason}", "success": False})
+            
+            safe_code_hashes.add(code_hash)
 
         with tempfile.TemporaryDirectory() as tmpdir:
 
@@ -321,7 +359,14 @@ def run_code():
                 if compile_res.returncode != 0:
                     return jsonify({"output": compile_res.stderr, "success": False})
                 print("Running... ")
-                result = subprocess.run(['java', '-cp', tmpdir, 'Main'], capture_output=True, text=True, timeout=30)
+                main_class = 'TestRunner' if 'class TestRunner' in code else 'Main'
+                result = subprocess.run(['java', '-cp', tmpdir, main_class], capture_output=True, text=True, timeout=30)
+
+            elif lang == 'JavaScript':
+                path = os.path.join(tmpdir, "solution.js")
+                with open(path, 'w') as f:
+                    f.write(code)
+                result = subprocess.run(['node', path], capture_output=True, text=True, timeout=15)
 
             else:
                 return jsonify({"output": "Unsupported language", "success": False})
