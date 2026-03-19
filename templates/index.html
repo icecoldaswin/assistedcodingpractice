@@ -550,19 +550,25 @@
         }
 
         // --- 4. AI & RUN ---
-        let spinnerInterval = null;
-        function termSpinner(msg) {
+        let spinnerInterval = null, spinnerTabId = null;
+        function termSpinner(msg, tabId) {
+            clearInterval(spinnerInterval);
+            const tid = tabId || activeTabId;
+            spinnerTabId = tid;
+            if (tid !== activeTabId) return;
             const term = document.getElementById('terminal');
             const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
             let i = 0;
             term.style.color = '#facc15';
             term.innerText = `${frames[0]} ${msg}`;
-            spinnerInterval = setInterval(() => { i = (i + 1) % frames.length; term.innerText = `${frames[i]} ${msg}`; syncDockedTerminal(); }, 80);
-            return term;
+            spinnerInterval = setInterval(() => {
+                if (activeTabId !== tid) { clearInterval(spinnerInterval); return; }
+                i = (i + 1) % frames.length; term.innerText = `${frames[i]} ${msg}`; syncDockedTerminal();
+            }, 80);
         }
         function termDone(text, color, tabId) {
-            clearInterval(spinnerInterval);
             const tid = tabId || activeTabId;
+            if (spinnerTabId === tid) { clearInterval(spinnerInterval); spinnerTabId = null; }
             if (tabs[tid]) { tabs[tid].terminalOutput = text; tabs[tid].terminalColor = color || '#10b981'; }
             if (tid === activeTabId) {
                 const term = document.getElementById('terminal');
@@ -595,7 +601,7 @@
             if (!genMgr.acquire(key)) return;
             const body = document.getElementById('aiAnalysisBody');
             body.innerHTML = "<p class='animate-pulse text-blue-400 font-bold'>ANALYZING PATTERNS...</p>";
-            termSpinner('Analyzing patterns...');
+            termSpinner('Analyzing patterns...', tabId);
             try {
                 const text = await geminiCall(`Explain optimal approach:\n${tabs[tabId].statement}`);
                 tabs[tabId].aiAnalysis = text;
@@ -616,7 +622,7 @@
             btn.classList.add('animate-pulse');
             const feedbackDiv = document.getElementById(`feedback-${stepKey}`);
             if (feedbackDiv) feedbackDiv.classList.add('hidden');
-            termSpinner(`Validating step ${stepKey}...`);
+            termSpinner(`Validating step ${stepKey}...`, tabId);
             try {
                 const text = await geminiCall(`Problem: ${tabs[tabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
                 if (activeTabId === tabId) { feedbackDiv.innerHTML = marked.parse(text); feedbackDiv.classList.remove('hidden'); }
@@ -654,7 +660,7 @@
             const tabId = activeTabId;
             const key = `boilerplate_${tabId}_${lang}`;
             if (!genMgr.acquire(key)) return;
-            termSpinner(`Generating ${lang} boilerplate...`);
+            termSpinner(`Generating ${lang} boilerplate...`, tabId);
             try {
                 const javaHint = lang === 'java' ? ' For Java: use public class Main with public static void main.' : '';
                 const prompt = `Generate ONLY ${lang} boilerplate (no solution) for:\n${tabs[tabId].statement}\n\nUse function name: solve. Include main/entry point.${javaHint} ONLY code, NO markdown fences.`;
@@ -700,7 +706,7 @@
             if (!genMgr.acquire(key)) return;
             const btns = getGenTestBtns();
             btns.forEach(b => { b.innerHTML = 'Generating...'; b.classList.add('animate-pulse'); });
-            if (!silent) termSpinner('Generating tests...');
+            if (!silent) termSpinner('Generating tests...', tabId);
             try {
                 const lang = tabs[tabId].lang || 'python';
                 const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[tabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
@@ -776,12 +782,12 @@
             const fullScript = editors[`${tabId}_code`].getValue();
 
             if (selectedLang !== 'javascript') {
-                termSpinner('Sanity check...');
+                termSpinner('Sanity check...', tabId);
                 const check = await sanityCheck(fullScript, selectedLang);
                 if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171', tabId); return; }
             }
 
-            termSpinner('Running...');
+            termSpinner('Running...', tabId);
             let runSuccess = false;
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
@@ -805,12 +811,12 @@
             const fullScript = editors[`${tabId}_code`].getValue() + '\n\n' + editors[`${tabId}_tests`].getValue();
 
             if (selectedLang !== 'javascript') {
-                termSpinner('Sanity check...');
+                termSpinner('Sanity check...', tabId);
                 const check = await sanityCheck(fullScript, selectedLang);
                 if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171', tabId); return; }
             }
 
-            termSpinner('Running code + tests...');
+            termSpinner('Running code + tests...', tabId);
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
                 termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
@@ -842,6 +848,8 @@
 
         function clearTerminal() {
             document.getElementById('terminal').innerText = '';
+            if (activeTabId && tabs[activeTabId]) { tabs[activeTabId].terminalOutput = ''; tabs[activeTabId].terminalColor = ''; }
+            syncDockedTerminal();
         }
 
         async function loadState() {
