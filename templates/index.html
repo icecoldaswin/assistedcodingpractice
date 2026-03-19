@@ -127,7 +127,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">01</span> Absorption & Constraints</div>
-                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s1')" title="Maximize">⤢</span><button onclick="validateStep('s1', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s1')" title="Maximize">⤢</span><button data-genaction onclick="validateStep('s1', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s1" class="monaco-container"></div>
                         <div id="feedback-s1" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -135,7 +135,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">02</span> Pattern Hunt & Data Structures</div>
-                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s2')" title="Maximize">⤢</span><button onclick="validateStep('s2', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s2')" title="Maximize">⤢</span><button data-genaction onclick="validateStep('s2', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s2" class="monaco-container"></div>
                         <div id="feedback-s2" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -143,7 +143,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">03</span> Logical Flow (Pseudocode)</div>
-                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s3')" title="Maximize">⤢</span><button onclick="validateStep('s3', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s3')" title="Maximize">⤢</span><button data-genaction onclick="validateStep('s3', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s3" class="monaco-container"></div>
                         <div id="feedback-s3" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -151,7 +151,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">04.1</span> Dry Run & Edge Cases</div>
-                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s4')" title="Maximize">⤢</span><button onclick="validateStep('s4', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s4')" title="Maximize">⤢</span><button data-genaction onclick="validateStep('s4', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s4" class="monaco-container"></div>
                         <div id="feedback-s4" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -170,7 +170,7 @@
                             <span class="maximize-btn" onclick="toggleMaximize('editor-code')" title="Maximize">⤢</span>
                         </div>
                         <div class="flex gap-2">
-                            <button data-gentests onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
+                            <button data-gentests data-genaction onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
                             <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                             <button onclick="runCode()" class="bg-green-600 text-white px-6 py-1 rounded font-black text-[10px] uppercase hover:bg-green-500 transition">Run Logic</button>
                         </div>
@@ -185,7 +185,7 @@
                 <div class="flex justify-between items-center px-3 py-1 border-b border-slate-800 bg-slate-900/50 shrink-0">
                     <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Terminal</span>
                     <div class="flex gap-2 items-center">
-                        <button data-gentests onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
+                        <button data-gentests data-genaction onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
                         <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                         <button onclick="runCode()" class="bg-green-600 text-white px-4 py-0.5 rounded font-black text-[9px] uppercase hover:bg-green-500 transition">Run Logic</button>
                         <button onclick="toggleDockedTerminal()" class="text-[9px] font-black text-slate-500 hover:text-blue-400 ml-1">_</button>
@@ -199,7 +199,7 @@
                     <div class="p-8 bg-slate-900 border border-slate-800 rounded-2xl">
                         <div class="flex justify-between items-center mb-6">
                             <h3 class="font-black text-blue-500 text-xs uppercase tracking-widest">AI Strategy Analysis</h3>
-                            <button onclick="askGemini()" class="bg-blue-600 px-4 py-1 rounded text-[10px] font-black uppercase">Refresh Analysis</button>
+                            <button data-genaction onclick="askGemini()" class="bg-blue-600 px-4 py-1 rounded text-[10px] font-black uppercase">Refresh Analysis</button>
                         </div>
                         <div id="aiAnalysisBody" class="prose prose-invert prose-blue max-w-none text-slate-300 text-sm">
                             Click 'Refresh' to let Gemini analyze the optimal patterns for this problem.
@@ -284,12 +284,33 @@
         let serverAvailable = false;
         let maximizedEditor = null;
 
+        const genMgr = {
+            _active: null, _done: new Set(),
+            busy() { return !!this._active; },
+            acquire(key) {
+                if (this._active) return false;
+                if (this._done.has(key)) return false;
+                this._active = key;
+                document.querySelectorAll('[data-genaction]').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; b.style.pointerEvents = 'none'; });
+                return true;
+            },
+            release() {
+                if (this._active) this._done.add(this._active);
+                this._active = null;
+                document.querySelectorAll('[data-genaction]').forEach(b => { b.disabled = false; b.style.opacity = ''; b.style.pointerEvents = ''; });
+            },
+            clearSection(key) { this._done.delete(key); },
+            clearAll() { this._done.clear(); }
+        };
+
         // --- 0. CTRL+S SAVE ---
         document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'l') { e.preventDefault(); clearTerminal(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
+            if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
         });
 
@@ -449,6 +470,7 @@
         // --- 3. EDITOR & VIEW MGMT ---
         function selectTab(id) {
             activeTabId = id;
+            genMgr.clearAll();
 
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('activeContent').classList.remove('hidden');
@@ -563,6 +585,8 @@
         }
 
         async function askGemini() {
+            const key = `analysis_${activeTabId}`;
+            if (!genMgr.acquire(key)) return;
             const body = document.getElementById('aiAnalysisBody');
             body.innerHTML = "<p class='animate-pulse text-blue-400 font-bold'>ANALYZING PATTERNS...</p>";
             termSpinner('Analyzing patterns...');
@@ -573,9 +597,13 @@
                 triggerSave();
                 termDone('>>> Analysis complete.', '#10b981');
             } catch(e) { body.innerHTML = `<span class="text-red-400">${e.message}</span>`; termDone('>>> Analysis failed: ' + e.message, '#f87171'); }
+            finally { genMgr.release(); }
         }
 
         async function validateStep(stepKey, btn) {
+            const content = editors[`${activeTabId}_${stepKey}`]?.getValue() || '';
+            const key = `validate_${activeTabId}_${stepKey}_${content.length}`;
+            if (!genMgr.acquire(key)) return;
             const originalText = btn.innerText;
             btn.innerText = "VALIDATING...";
             btn.classList.add('animate-pulse');
@@ -583,7 +611,6 @@
             if (feedbackDiv) feedbackDiv.classList.add('hidden');
             termSpinner(`Validating step ${stepKey}...`);
             try {
-                const content = editors[`${activeTabId}_${stepKey}`].getValue();
                 const text = await geminiCall(`Problem: ${tabs[activeTabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
                 feedbackDiv.innerHTML = marked.parse(text);
                 feedbackDiv.classList.remove('hidden');
@@ -591,9 +618,11 @@
             } catch (e) {
                 if (feedbackDiv) { feedbackDiv.innerHTML = `<span class="text-red-400">${e.message}</span>`; feedbackDiv.classList.remove('hidden'); }
                 termDone('>>> Validation failed: ' + e.message, '#f87171');
+                genMgr.clearSection(key);
             } finally {
                 btn.innerText = originalText;
                 btn.classList.remove('animate-pulse');
+                genMgr.release();
             }
         }
 
@@ -615,6 +644,8 @@
         }
 
         async function generateBoilerplate(lang) {
+            const key = `boilerplate_${activeTabId}_${lang}`;
+            if (!genMgr.acquire(key)) return;
             termSpinner(`Generating ${lang} boilerplate...`);
             try {
                 const javaHint = lang === 'java' ? ' For Java: use public class Main with public static void main.' : '';
@@ -627,7 +658,8 @@
                 termDone('>>> Boilerplate generated.', '#10b981');
             } catch (e) {
                 termDone('>>> ERROR: ' + e.message, '#f87171');
-            }
+                genMgr.clearSection(key);
+            } finally { genMgr.release(); }
         }
 
         let testGenTimer = null, testGenCountdown = 0;
@@ -655,11 +687,13 @@
 
         async function generateTests() {
             cancelTestGen();
+            const code = editors[`${activeTabId}_code`]?.getValue() || '';
+            const key = `tests_${activeTabId}_${code.length}`;
+            if (!genMgr.acquire(key)) return;
             const btns = getGenTestBtns();
             btns.forEach(b => { b.innerHTML = 'Generating...'; b.classList.add('animate-pulse'); });
             termSpinner('Generating tests...');
             try {
-                const code = editors[`${activeTabId}_code`].getValue();
                 const lang = document.getElementById('langSelect')?.value || 'python';
                 const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[activeTabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
                 const raw = await geminiCall(prompt);
@@ -669,8 +703,8 @@
                 triggerSave();
                 termDone('>>> Tests generated. Running...', '#10b981');
                 await runTests();
-            } catch(e) { termDone('>>> ERROR: ' + e.message, '#f87171'); }
-            finally { btns.forEach(b => { b.innerHTML = 'Gen Tests'; b.classList.remove('animate-pulse'); }); }
+            } catch(e) { termDone('>>> ERROR: ' + e.message, '#f87171'); genMgr.clearSection(key); }
+            finally { btns.forEach(b => { b.innerHTML = 'Gen Tests'; b.classList.remove('animate-pulse'); }); genMgr.release(); }
         }
 
         async function md5(text) {
@@ -792,6 +826,10 @@
                 }
                 document.getElementById('syncStatus').innerText = "Changes Saved.";
             }, 1000);
+        }
+
+        function clearTerminal() {
+            document.getElementById('terminal').innerText = '';
         }
 
         async function loadState() {
