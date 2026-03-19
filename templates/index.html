@@ -305,7 +305,7 @@
 
         // --- 0. CTRL+S SAVE ---
         document.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'l') { e.preventDefault(); clearTerminal(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); clearTerminal(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
@@ -469,6 +469,7 @@
 
         // --- 3. EDITOR & VIEW MGMT ---
         function selectTab(id) {
+            cancelTestGen();
             activeTabId = id;
             genMgr.clearAll();
 
@@ -558,12 +559,15 @@
             spinnerInterval = setInterval(() => { i = (i + 1) % frames.length; term.innerText = `${frames[i]} ${msg}`; syncDockedTerminal(); }, 80);
             return term;
         }
-        function termDone(text, color) {
+        function termDone(text, color, tabId) {
             clearInterval(spinnerInterval);
-            const term = document.getElementById('terminal');
-            term.innerText = text; term.style.color = color || '#10b981';
-            saveTerminal(text, color || '#10b981');
-            syncDockedTerminal();
+            const tid = tabId || activeTabId;
+            if (tabs[tid]) { tabs[tid].terminalOutput = text; tabs[tid].terminalColor = color || '#10b981'; }
+            if (tid === activeTabId) {
+                const term = document.getElementById('terminal');
+                term.innerText = text; term.style.color = color || '#10b981';
+                syncDockedTerminal();
+            }
         }
 
         async function geminiCall(prompt) {
@@ -585,24 +589,26 @@
         }
 
         async function askGemini() {
-            const key = `analysis_${activeTabId}`;
+            const tabId = activeTabId;
+            const key = `analysis_${tabId}`;
             if (!genMgr.acquire(key)) return;
             const body = document.getElementById('aiAnalysisBody');
             body.innerHTML = "<p class='animate-pulse text-blue-400 font-bold'>ANALYZING PATTERNS...</p>";
             termSpinner('Analyzing patterns...');
             try {
-                const text = await geminiCall(`Explain optimal approach:\n${tabs[activeTabId].statement}`);
-                tabs[activeTabId].aiAnalysis = text;
-                body.innerHTML = marked.parse(text);
+                const text = await geminiCall(`Explain optimal approach:\n${tabs[tabId].statement}`);
+                tabs[tabId].aiAnalysis = text;
+                if (activeTabId === tabId) body.innerHTML = marked.parse(text);
                 triggerSave();
-                termDone('>>> Analysis complete.', '#10b981');
-            } catch(e) { body.innerHTML = `<span class="text-red-400">${e.message}</span>`; termDone('>>> Analysis failed: ' + e.message, '#f87171'); }
+                termDone('>>> Analysis complete.', '#10b981', tabId);
+            } catch(e) { if (activeTabId === tabId) body.innerHTML = `<span class="text-red-400">${e.message}</span>`; termDone('>>> Analysis failed: ' + e.message, '#f87171', tabId); }
             finally { genMgr.release(); }
         }
 
         async function validateStep(stepKey, btn) {
-            const content = editors[`${activeTabId}_${stepKey}`]?.getValue() || '';
-            const key = `validate_${activeTabId}_${stepKey}_${content.length}`;
+            const tabId = activeTabId;
+            const content = editors[`${tabId}_${stepKey}`]?.getValue() || '';
+            const key = `validate_${tabId}_${stepKey}_${content.length}`;
             if (!genMgr.acquire(key)) return;
             const originalText = btn.innerText;
             btn.innerText = "VALIDATING...";
@@ -611,13 +617,12 @@
             if (feedbackDiv) feedbackDiv.classList.add('hidden');
             termSpinner(`Validating step ${stepKey}...`);
             try {
-                const text = await geminiCall(`Problem: ${tabs[activeTabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
-                feedbackDiv.innerHTML = marked.parse(text);
-                feedbackDiv.classList.remove('hidden');
-                termDone(`>>> Step ${stepKey} validated.`, '#10b981');
+                const text = await geminiCall(`Problem: ${tabs[tabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
+                if (activeTabId === tabId) { feedbackDiv.innerHTML = marked.parse(text); feedbackDiv.classList.remove('hidden'); }
+                termDone(`>>> Step ${stepKey} validated.`, '#10b981', tabId);
             } catch (e) {
-                if (feedbackDiv) { feedbackDiv.innerHTML = `<span class="text-red-400">${e.message}</span>`; feedbackDiv.classList.remove('hidden'); }
-                termDone('>>> Validation failed: ' + e.message, '#f87171');
+                if (activeTabId === tabId && feedbackDiv) { feedbackDiv.innerHTML = `<span class="text-red-400">${e.message}</span>`; feedbackDiv.classList.remove('hidden'); }
+                termDone('>>> Validation failed: ' + e.message, '#f87171', tabId);
                 genMgr.clearSection(key);
             } finally {
                 btn.innerText = originalText;
@@ -637,27 +642,28 @@
             generateBoilerplate(lang);
         }
 
-        function saveTerminal(text, color) {
-            if (!activeTabId) return;
-            tabs[activeTabId].terminalOutput = text;
-            tabs[activeTabId].terminalColor = color;
+        function saveTerminal(text, color, tabId) {
+            const tid = tabId || activeTabId;
+            if (!tid || !tabs[tid]) return;
+            tabs[tid].terminalOutput = text;
+            tabs[tid].terminalColor = color;
         }
 
         async function generateBoilerplate(lang) {
-            const key = `boilerplate_${activeTabId}_${lang}`;
+            const tabId = activeTabId;
+            const key = `boilerplate_${tabId}_${lang}`;
             if (!genMgr.acquire(key)) return;
             termSpinner(`Generating ${lang} boilerplate...`);
             try {
                 const javaHint = lang === 'java' ? ' For Java: use public class Main with public static void main.' : '';
-                const prompt = `Generate ONLY ${lang} boilerplate (no solution) for:\n${tabs[activeTabId].statement}\n\nUse function name: solve. Include main/entry point.${javaHint} ONLY code, NO markdown fences.`;
+                const prompt = `Generate ONLY ${lang} boilerplate (no solution) for:\n${tabs[tabId].statement}\n\nUse function name: solve. Include main/entry point.${javaHint} ONLY code, NO markdown fences.`;
                 const raw = await geminiCall(prompt);
                 const code = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
-                const ed = editors[`${activeTabId}_code`];
-                monaco.editor.setModelLanguage(ed.getModel(), lang);
-                ed.setValue(code);
-                termDone('>>> Boilerplate generated.', '#10b981');
+                const ed = editors[`${tabId}_code`];
+                if (ed) { monaco.editor.setModelLanguage(ed.getModel(), lang); ed.setValue(code); }
+                termDone('>>> Boilerplate generated.', '#10b981', tabId);
             } catch (e) {
-                termDone('>>> ERROR: ' + e.message, '#f87171');
+                termDone('>>> ERROR: ' + e.message, '#f87171', tabId);
                 genMgr.clearSection(key);
             } finally { genMgr.release(); }
         }
@@ -680,30 +686,31 @@
             update();
             testGenTimer = setInterval(() => {
                 testGenCountdown--;
-                if (testGenCountdown <= 0) { clearInterval(testGenTimer); testGenTimer = null; generateTests(); return; }
+                if (testGenCountdown <= 0) { clearInterval(testGenTimer); testGenTimer = null; generateTests(true); return; }
                 update();
             }, 1000);
         }
 
-        async function generateTests() {
+        async function generateTests(silent) {
             cancelTestGen();
-            const code = editors[`${activeTabId}_code`]?.getValue() || '';
-            const key = `tests_${activeTabId}_${code.length}`;
+            const tabId = activeTabId;
+            const code = editors[`${tabId}_code`]?.getValue() || '';
+            const key = `tests_${tabId}_${code.length}`;
             if (!genMgr.acquire(key)) return;
             const btns = getGenTestBtns();
             btns.forEach(b => { b.innerHTML = 'Generating...'; b.classList.add('animate-pulse'); });
-            termSpinner('Generating tests...');
+            if (!silent) termSpinner('Generating tests...');
             try {
-                const lang = document.getElementById('langSelect')?.value || 'python';
-                const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[activeTabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
+                const lang = tabs[tabId].lang || 'python';
+                const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[tabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
                 const raw = await geminiCall(prompt);
                 const script = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
-                editors[`${activeTabId}_tests`].setValue(script);
-                tabs[activeTabId].steps.tests = script;
+                const ed = editors[`${tabId}_tests`];
+                if (ed) ed.setValue(script);
+                tabs[tabId].steps.tests = script;
                 triggerSave();
-                termDone('>>> Tests generated. Running...', '#10b981');
-                await runTests();
-            } catch(e) { termDone('>>> ERROR: ' + e.message, '#f87171'); genMgr.clearSection(key); }
+                if (!silent) { termDone('>>> Tests generated. Running...', '#10b981', tabId); if (activeTabId === tabId) await runTests(); }
+            } catch(e) { if (!silent) termDone('>>> ERROR: ' + e.message, '#f87171', tabId); genMgr.clearSection(key); }
             finally { btns.forEach(b => { b.innerHTML = 'Gen Tests'; b.classList.remove('animate-pulse'); }); genMgr.release(); }
         }
 
@@ -763,13 +770,14 @@
         }
 
         async function runCode() {
+            const tabId = activeTabId;
             const selectedLang = document.getElementById('langSelect').value;
-            const fullScript = editors[`${activeTabId}_code`].getValue();
+            const fullScript = editors[`${tabId}_code`].getValue();
 
             if (selectedLang !== 'javascript') {
                 termSpinner('Sanity check...');
                 const check = await sanityCheck(fullScript, selectedLang);
-                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171'); return; }
+                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171', tabId); return; }
             }
 
             termSpinner('Running...');
@@ -777,41 +785,42 @@
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
                 runSuccess = r.success;
-                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171');
+                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
             } else if (serverAvailable) {
                 try {
                     const langMap = { python:'Python', java:'Java' };
                     const res = await fetch('/run_code', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code:fullScript, language:langMap[selectedLang]}) });
                     const d = await res.json();
                     runSuccess = d.success;
-                    termDone(d.output, d.success ? '#10b981' : '#f87171');
-                } catch(e) { termDone('ERROR: ' + e.message, '#f87171'); }
-            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171'); }
-            if (runSuccess) scheduleTestGen();
+                    termDone(d.output, d.success ? '#10b981' : '#f87171', tabId);
+                } catch(e) { termDone('ERROR: ' + e.message, '#f87171', tabId); }
+            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171', tabId); }
+            if (runSuccess && activeTabId === tabId && !(editors[`${tabId}_tests`]?.getValue()?.trim())) scheduleTestGen();
         }
 
         async function runTests() {
+            const tabId = activeTabId;
             const selectedLang = document.getElementById('langSelect').value;
-            const fullScript = editors[`${activeTabId}_code`].getValue() + '\n\n' + editors[`${activeTabId}_tests`].getValue();
+            const fullScript = editors[`${tabId}_code`].getValue() + '\n\n' + editors[`${tabId}_tests`].getValue();
 
             if (selectedLang !== 'javascript') {
                 termSpinner('Sanity check...');
                 const check = await sanityCheck(fullScript, selectedLang);
-                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171'); return; }
+                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171', tabId); return; }
             }
 
             termSpinner('Running code + tests...');
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
-                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171');
+                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
             } else if (serverAvailable) {
                 try {
                     const langMap = { python:'Python', java:'Java' };
                     const res = await fetch('/run_code', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code:fullScript, language:langMap[selectedLang]}) });
                     const d = await res.json();
-                    termDone(d.output, d.success ? '#10b981' : '#f87171');
-                } catch(e) { termDone('ERROR: ' + e.message, '#f87171'); }
-            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171'); }
+                    termDone(d.output, d.success ? '#10b981' : '#f87171', tabId);
+                } catch(e) { termDone('ERROR: ' + e.message, '#f87171', tabId); }
+            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171', tabId); }
         }
 
         // --- 5. PERSISTENCE (localStorage always, server mirror when available) ---
@@ -1019,6 +1028,7 @@
         }
 
         async function submitCtxQuestion() {
+            const tabId = activeTabId;
             const inp = document.getElementById('ctxInput');
             const raw = inp.value.trim();
             if (!raw) return;
@@ -1035,14 +1045,15 @@
             renderChatThreads();
 
             const refCtx = buildRefContext(refs);
-            const answer = await callChat(cleanText, ctxSelection, ctxSource, refCtx);
+            const answer = await callChat(cleanText, ctxSelection, ctxSource, refCtx, tabId);
             threads[hash].messages.push({ question: cleanText, answer });
-            renderChatThreads();
+            if (activeTabId === tabId) renderChatThreads();
             triggerSave();
         }
 
         async function sendThreadReply() {
             if (!replyingToThread) return;
+            const tabId = activeTabId;
             const inp = document.getElementById('threadReplyInput');
             const raw = inp.value.trim();
             if (!raw) return;
@@ -1054,19 +1065,19 @@
             if (!t) return;
 
             const refCtx = buildRefContext(refs);
-            // Thread-local context only: original selection + this thread's history
             let threadCtx = `Original selection: ${t.selection}\n`;
             t.messages.forEach(m => { threadCtx += `Q: ${m.question}\nA: ${m.answer}\n`; });
 
-            const answer = await callChat(cleanText, threadCtx, t.source, refCtx);
+            const answer = await callChat(cleanText, threadCtx, t.source, refCtx, tabId);
             t.messages.push({ question: cleanText, answer });
-            renderChatThreads();
+            if (activeTabId === tabId) renderChatThreads();
             triggerSave();
         }
 
-        async function callChat(question, selection, source, refContext) {
+        async function callChat(question, selection, source, refContext, tabId) {
             try {
-                const prompt = `You are a concise coding tutor. Answer in <100 words.\n\nProblem: ${(tabs[activeTabId]?.statement || '').slice(0,500)}\nSelected text from [${source}]: ${(selection||'').slice(0,500)}\n${refContext ? 'Referenced threads:\n' + refContext : ''}\nQuestion: ${question}`;
+                const tid = tabId || activeTabId;
+                const prompt = `You are a concise coding tutor. Answer in <100 words.\n\nProblem: ${(tabs[tid]?.statement || '').slice(0,500)}\nSelected text from [${source}]: ${(selection||'').slice(0,500)}\n${refContext ? 'Referenced threads:\n' + refContext : ''}\nQuestion: ${question}`;
                 return await geminiCall(prompt);
             } catch (e) { return 'Error: ' + e.message; }
         }
@@ -1082,6 +1093,7 @@
         }
 
         async function sendAdHocChat() {
+            const tabId = activeTabId;
             const inp = document.getElementById('adHocChatInput');
             const raw = inp.value.trim();
             if (!raw) return;
@@ -1097,8 +1109,9 @@
             renderChatThreads();
 
             const refCtx = buildRefContext(refs);
-            const answer = await callChat(cleanText, '', 'general', refCtx);
+            const answer = await callChat(cleanText, '', 'general', refCtx, tabId);
             threads[hash].messages.push({ question: cleanText, answer });
+            if (activeTabId === tabId) renderChatThreads();
             renderChatThreads();
             triggerSave();
         }
