@@ -107,6 +107,7 @@
                 <div class="flex gap-4 items-center">
                     <button onclick="setView('workbook')" id="btn-workbook" class="view-mode-btn view-mode-active">Workbook</button>
                     <button onclick="setView('reference')" id="btn-reference" class="view-mode-btn">AI Reference</button>
+                    <button onclick="toggleChatPanel()" id="btn-chat" class="text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-blue-400 ml-2" title="Toggle chat">💬</button>
                 </div>
             </div>
             
@@ -214,13 +215,19 @@
           <div id="chatPanel">
             <div class="p-4 border-b border-slate-800 flex justify-between items-center">
               <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Threads</span>
-              <button onclick="showAllThreads()" class="text-[9px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-400">All</button>
+              <div class="flex gap-2">
+                <button onclick="showAllThreads()" class="text-[9px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-400">All</button>
+                <button onclick="toggleChatPanel()" class="text-[9px] font-black text-slate-500 hover:text-red-400">✕</button>
+              </div>
             </div>
             <div id="chatThreads" class="flex-1 overflow-y-auto p-3 custom-scroll"></div>
             <div id="chatInputBar" class="p-3 border-t border-slate-800 hidden">
               <div class="relative">
                 <input id="threadReplyInput" type="text" placeholder="Reply to thread..." class="w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter')sendThreadReply()" oninput="handleReplyAtMention(this)">
               </div>
+            </div>
+            <div class="p-3 border-t border-slate-800">
+              <input id="adHocChatInput" type="text" placeholder="Ask anything..." class="w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter')sendAdHocChat()" oninput="handleReplyAtMention(this)">
             </div>
           </div>
          </div>
@@ -278,7 +285,7 @@
         // --- 0. CTRL+S SAVE ---
         document.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'M') { e.preventDefault(); if(e.target.classList?.contains('monaco-container')) toggleMaximize(e.target.id)}
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
@@ -1009,6 +1016,34 @@
 
         function showChatPanel() {
             document.getElementById('chatPanel').style.display = 'flex';
+        }
+
+        function toggleChatPanel() {
+            const cp = document.getElementById('chatPanel');
+            cp.style.display = cp.style.display === 'flex' ? 'none' : 'flex';
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        async function sendAdHocChat() {
+            const inp = document.getElementById('adHocChatInput');
+            const raw = inp.value.trim();
+            if (!raw) return;
+            inp.value = '';
+
+            const { cleanText, refs } = resolveRefHashes(raw);
+            const hash = genHash();
+            const threads = getTabThreads();
+            threads[hash] = { hash, question: cleanText, selection: '', source: 'general', messages: [], expanded: false };
+
+            activeThreadView = null;
+            replyingToThread = null;
+            renderChatThreads();
+
+            const refCtx = buildRefContext(refs);
+            const answer = await callChat(cleanText, '', 'general', refCtx);
+            threads[hash].messages.push({ question: cleanText, answer });
+            renderChatThreads();
+            triggerSave();
         }
 
         function showAllThreads() {
