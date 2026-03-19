@@ -879,8 +879,13 @@
                 };
                 window.addEventListener('message', handler);
                 const wrapped = `<script>
-                    console.log = (...a) => parent.postMessage(a.map(String).join(' '), '*');
-                    console.error = console.log;
+                    const _log = console.log.bind(console), _err = console.error.bind(console), _warn = console.warn.bind(console), _info = console.info.bind(console), _table = console.table.bind(console);
+                    const _send = (...a) => parent.postMessage(a.map(v => typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)).join(' '), '*');
+                    console.log = (...a) => { _log(...a); _send(...a); };
+                    console.error = (...a) => { _err(...a); _send(...a); };
+                    console.warn = (...a) => { _warn(...a); _send(...a); };
+                    console.info = (...a) => { _info(...a); _send(...a); };
+                    console.table = (data, cols) => { _table(data, cols); _send(typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data)); };
                     try { ${code}\n } catch(e) { console.log('ERROR: ' + e.message); }
                     parent.postMessage('__DONE__', '*');
                 <\/script>`;
