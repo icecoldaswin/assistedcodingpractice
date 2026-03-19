@@ -626,7 +626,10 @@
                 const ed = monaco.editor.create(dom, {
                     value: tabs[id].steps[key] || '',
                     language: lang, theme: 'vs-dark',
-                    automaticLayout: true, minimap: {enabled: false}, fontSize: 13
+                    automaticLayout: true, minimap: {enabled: false}, fontSize: 13,
+                    wordWrap: 'on',                 // Enables wrapping
+                    wrappingStrategy: 'advanced',   // Helps with performance in large files
+                    wrappingIndent: 'indent'        // Keeps wrapped lines aligned with the parent
                 });
                 ed.onDidChangeModelContent(() => { tabs[id].steps[key] = ed.getValue(); triggerSave(); });
                 ed.onDidFocusEditorText(() => { lastFocusedEditorKey = `${id}_${key}`; });
