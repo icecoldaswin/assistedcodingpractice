@@ -305,7 +305,7 @@
 
         // --- 0. CTRL+S SAVE ---
         document.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'l') { e.preventDefault(); clearTerminal(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'l') { e.preventDefault(); clearTerminal(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
@@ -959,7 +959,7 @@
                     const cur = window.getSelection().toString().trim();
                     if (cur.length > 2) showCtxPopup(x, y, cur, source);
                 }
-            }, 3000);
+            }, 1500);
         }
 
         function hookEditorSelection(editorKey) {
