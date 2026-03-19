@@ -85,7 +85,9 @@
             <div class="flex gap-1">
                 <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500">
                 <button onclick="saveGeminiKey()" class="bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded hover:bg-blue-500">Set</button>
+                <button onclick="document.getElementById('lcSeedWrap').classList.toggle('hidden')" title="Paste LeetCode problem list" class="bg-slate-700 text-white text-[9px] px-1.5 py-1 rounded hover:bg-slate-600">📋</button>
             </div>
+            <div id="lcSeedWrap" class="hidden"><textarea id="lcSeedInput" rows="3" placeholder="Paste LeetCode JSON blob, press Enter" class="w-full bg-slate-900 border border-slate-700 text-[9px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500 resize-none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();seedLCFromPaste()}"></textarea></div>
             <div id="apiKeyStatus" class="text-[9px] text-green-400 text-center"></div>
             <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Engine Standby</div>
         </div>
@@ -337,6 +339,23 @@
                 }
             });
             if (!serverAvailable) sel.value = 'javascript';
+        }
+
+        function seedLCFromPaste() {
+            const raw = document.getElementById('lcSeedInput').value.trim();
+            const status = document.getElementById('apiKeyStatus');
+            try {
+                let arr = JSON.parse(raw);
+                if (arr.stat_status_pairs) arr = arr.stat_status_pairs;
+                if (arr[0]?.stat) arr = arr.map(x => ({title: x.stat.question__title, titleSlug: x.stat.question__title_slug}));
+                if (!arr[0]?.title) throw 'bad format';
+                localStorage.setItem('leetcode_problems', JSON.stringify(arr));
+                allProblems = arr;
+                status.innerText = arr.length + ' problems loaded';
+                document.getElementById('lcSeedInput').value = '';
+                document.getElementById('lcSeedWrap').classList.add('hidden');
+            } catch { status.innerText = 'Invalid JSON'; }
+            setTimeout(() => status.innerText = '', 3000);
         }
 
         async function fetchProblemList() {
