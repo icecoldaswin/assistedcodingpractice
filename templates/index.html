@@ -18,6 +18,13 @@
         .monaco-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 220px; }
         .code-main-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 450px; }
         #terminal { background: #000; color: #10b981; font-family: 'Fira Code', monospace; font-size: 11px; scrollbar-width: thin; }
+        #termTable, #dockedTermTable { background: #000; scrollbar-width: thin; }
+        .term-tbl { width: 100%; border-collapse: collapse; font-family: 'Fira Code', monospace; font-size: 10px; }
+        .term-tbl th { background: #1e293b; color: #94a3b8; text-align: left; padding: 4px 8px; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; position: sticky; top: 0; }
+        .term-tbl td { padding: 3px 8px; border-top: 1px solid #1e293b; color: #cbd5e1; }
+        .term-tbl tr:hover td { background: #0f172a; }
+        .term-tbl .pass { color: #10b981; }
+        .term-tbl .fail { color: #f87171; }
         
         /* Tab & Navigation Styling */
         .file-tab { border-right: 1px solid #1e293b; transition: all 0.2s; }
@@ -230,7 +237,10 @@
                         </div>
                     </div>
                     <div id="editor-code" class="code-main-container"></div>
-                    <pre id="terminal" class="w-full h-32 p-4 rounded-xl border border-slate-800 overflow-auto shadow-inner"></pre>
+                    <div class="w-full h-32 rounded-xl border border-slate-800 overflow-hidden shadow-inner flex">
+                        <pre id="terminal" class="flex-1 p-4 overflow-auto" style="min-width:0"></pre>
+                        <div id="termTable" class="flex-1 p-2 overflow-auto border-l border-slate-800 hidden" style="min-width:0"></div>
+                    </div>
                 </div>
             </div>
 
@@ -245,7 +255,10 @@
                         <button onclick="toggleDockedTerminal()" class="text-[9px] font-black text-slate-500 hover:text-blue-400 ml-1">_</button>
                     </div>
                 </div>
-                <pre id="dockedTermContent" class="flex-1 p-3 overflow-auto text-[11px] font-mono" style="color:#10b981"></pre>
+                <div class="flex-1 flex overflow-hidden">
+                    <pre id="dockedTermContent" class="flex-1 p-3 overflow-auto text-[11px] font-mono" style="color:#10b981;min-width:0"></pre>
+                    <div id="dockedTermTable" class="flex-1 p-2 overflow-auto border-l border-slate-800 hidden" style="min-width:0"></div>
+                </div>
             </div>
 
             <div id="referenceView" class="flex-1 overflow-auto p-8 custom-scroll hidden" style="min-width:0">
@@ -635,6 +648,7 @@
             const term = document.getElementById('terminal');
             term.innerText = tabs[id].terminalOutput || '';
             term.style.color = tabs[id].terminalColor || '#10b981';
+            renderTermTable(tabs[id].terminalTable);
 
             renderTabs();
             setView('workbook');
@@ -872,9 +886,11 @@
                 iframe.sandbox = 'allow-scripts';
                 iframe.style.display = 'none';
                 const logs = [];
+                let tableData = null;
                 const handler = e => {
                     if (e.source !== iframe.contentWindow) return;
-                    if (e.data === '__DONE__') { cleanup(); resolve({ output: logs.join('\n'), success: true }); }
+                    if (e.data === '__DONE__') { cleanup(); resolve({ output: logs.join('\n'), success: true, tableData }); }
+                    else if (e.data && e.data.__type === 'table') { tableData = e.data.data; }
                     else logs.push(e.data);
                 };
                 window.addEventListener('message', handler);
@@ -885,14 +901,14 @@
                     console.error = (...a) => { _err(...a); _send(...a); };
                     console.warn = (...a) => { _warn(...a); _send(...a); };
                     console.info = (...a) => { _info(...a); _send(...a); };
-                    console.table = (data, cols) => { _table(data, cols); _send(typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data)); };
+                    console.table = (data, cols) => { _table(data, cols); parent.postMessage({__type:'table', data: JSON.parse(JSON.stringify(data))}, '*'); };
                     try { ${code}\n } catch(e) { console.log('ERROR: ' + e.message); }
                     parent.postMessage('__DONE__', '*');
                 <\/script>`;
                 iframe.srcdoc = wrapped;
                 document.body.appendChild(iframe);
                 const cleanup = () => { clearTimeout(timeout); window.removeEventListener('message', handler); iframe.remove(); };
-                const timeout = setTimeout(() => { cleanup(); resolve({ output: logs.join('\n') + '\n[TIMEOUT]', success: false }); }, 10000);
+                const timeout = setTimeout(() => { cleanup(); resolve({ output: logs.join('\n') + '\n[TIMEOUT]', success: false, tableData }); }, 10000);
             });
         }
 
@@ -913,6 +929,7 @@
                 const r = await runJsInSandbox(fullScript);
                 runSuccess = r.success;
                 termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
+                renderTermTable(r.tableData, tabId);
             } else if (serverAvailable) {
                 try {
                     const langMap = { python:'Python', java:'Java' };
@@ -943,6 +960,7 @@
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
                 termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
+                renderTermTable(r.tableData, tabId);
             } else if (serverAvailable) {
                 try {
                     const langMap = { python:'Python', java:'Java' };
@@ -971,7 +989,8 @@
 
         function clearTerminal() {
             document.getElementById('terminal').innerText = '';
-            if (activeTabId && tabs[activeTabId]) { tabs[activeTabId].terminalOutput = ''; tabs[activeTabId].terminalColor = ''; }
+            hideTermTable();
+            if (activeTabId && tabs[activeTabId]) { tabs[activeTabId].terminalOutput = ''; tabs[activeTabId].terminalColor = ''; tabs[activeTabId].terminalTable = null; }
             syncDockedTerminal();
         }
 
@@ -1403,6 +1422,36 @@
                 }
             }
             setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        function renderTermTable(data, tabId) {
+            const tid = tabId || activeTabId;
+            if (tabs[tid]) tabs[tid].terminalTable = data || null;
+            if (tid !== activeTabId) return;
+            if (!data) { hideTermTable(); return; }
+            const rows = Array.isArray(data) ? data : Object.values(data);
+            if (!rows.length) { hideTermTable(); return; }
+            const keys = Object.keys(rows[0]);
+            let html = '<table class="term-tbl"><thead><tr>' + keys.map(k => `<th>${esc(String(k))}</th>`).join('') + '</tr></thead><tbody>';
+            rows.forEach(r => {
+                html += '<tr>' + keys.map(k => {
+                    const v = r[k]; const s = String(v ?? '');
+                    const cls = /^(pass|✓|true|yes)$/i.test(s) ? 'pass' : /^(fail|✗|false|no)$/i.test(s) ? 'fail' : '';
+                    return `<td class="${cls}">${esc(s)}</td>`;
+                }).join('') + '</tr>';
+            });
+            html += '</tbody></table>';
+            ['termTable', 'dockedTermTable'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.innerHTML = html; el.classList.remove('hidden'); }
+            });
+        }
+
+        function hideTermTable() {
+            ['termTable', 'dockedTermTable'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.innerHTML = ''; el.classList.add('hidden'); }
+            });
         }
 
         function syncDockedTerminal() {
