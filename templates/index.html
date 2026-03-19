@@ -1474,11 +1474,13 @@
             };
             recognition.onerror = (e) => { if (e.error !== 'no-speech') stopMic(); };
             recognition.onend = () => { if (micActive) try { recognition.start(); } catch {} };
-            recognition.start();
-            micActive = true;
-            btn.innerText = '🎤';
-            btn.classList.add('text-red-400');
-            btn.classList.remove('text-slate-500');
+            try {
+                recognition.start();
+                micActive = true;
+                btn.innerText = '🎤';
+                btn.classList.add('text-red-400');
+                btn.classList.remove('text-slate-500');
+            } catch(err) { alert('Mic error: ' + err.message + '\nIf in iframe, add allow="microphone" to the iframe tag.'); }
         }
 
         function stopMic() {
