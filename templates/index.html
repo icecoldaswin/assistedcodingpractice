@@ -64,7 +64,7 @@
         #descriptionBar { transition: max-height .3s ease, opacity .3s ease, padding .3s ease; max-height: 200px; }
         #descriptionBar.desc-hidden { max-height: 0; opacity: 0; pointer-events: none; padding-top: 0; padding-bottom: 0; overflow: hidden; border: none; }
         #descriptionBar.desc-hidden.desc-peek { max-height: 200px; opacity: 1; pointer-events: auto; padding: 1rem; overflow: visible; border-bottom: 1px solid #0f172a; }
-        #descLeftPanel { transition: width .3s ease, opacity .3s ease; overflow: hidden; }
+        #descLeftPanel { transition: width .3s ease, opacity .3s ease; overflow: auto; }
         #descLeftPanel.desc-hidden { width: 0 !important; opacity: 0; pointer-events: none; border: none; }
         #descLeftPanel.desc-hidden.desc-peek { width: 320px !important; opacity: 1; pointer-events: auto; border-right: 1px solid #1e293b; }
         #atMentionPopup { position: fixed; z-index: 650; background: #1e293b; border: 1px solid #334155; border-radius: 8px; max-height: 180px; overflow-y: auto; display: none; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
@@ -278,7 +278,7 @@
     </div>
 
     <script>
-        let tabs = {}, activeTabId = null, editors = {}, allProblems = [], lcMap = {}, saveTimeout = null;
+        let tabs = {}, activeTabId = null, editors = {}, allProblems = [], lcMap = {}, saveTimeout = null, stateLoaded = false;
         let chatThreads = {}, activeThreadView = null, replyingToThread = null, ctxSelection = '', ctxSource = '', ctxSourceEditorKey = null;
         let safeCodeHashes = {};
         let serverAvailable = false;
@@ -458,6 +458,7 @@
             addSidebarItem(id, title);
             selectTab(id);
             toggleModal(false);
+            stateLoaded = true;
             triggerSave();
             if (getGeminiKey() && statement !== 'Manual problem description...') generateBoilerplate(defaultLang);
 
@@ -825,9 +826,11 @@
 
         // --- 5. PERSISTENCE (localStorage always, server mirror when available) ---
         function triggerSave() {
+            if (!stateLoaded || Object.keys(tabs).length === 0) return;
             document.getElementById('syncStatus').innerText = "SYNCING...";
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
+                if (Object.keys(tabs).length === 0) return;
                 const payload = { tabs, activeTabId, chatThreads };
                 localStorage.setItem('workspace_state', JSON.stringify(payload));
                 if (serverAvailable) {
@@ -859,6 +862,7 @@
                 Object.values(tabs).forEach(t => addSidebarItem(t.id, t.title));
                 selectTab(data.activeTabId || Object.keys(tabs)[0]);
             }
+            stateLoaded = true;
         }
 
         function addSidebarItem(id, title) {
