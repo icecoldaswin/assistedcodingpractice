@@ -98,6 +98,12 @@
         .sidebar-collapsed #sidebarFooter {
             display: none;
         }
+
+        @keyframes keyNeeded {
+            0%, 100% { border-color: #ef4444; }
+            50% { border-color: #eab308; }
+        }
+        .key-needed { animation: keyNeeded 1.2s ease-in-out infinite; }
     </style>
 </head>
 <body class="flex h-screen w-screen">
@@ -121,15 +127,22 @@
             class="flex-1 overflow-y-auto p-4 space-y-2 custom-scroll transition-all">
             </div>
 
-        <div id="sidebarFooter" class="p-4 bg-slate-950 border-t border-slate-800 space-y-2 transition-opacity">
-            <div class="flex gap-1">
-                <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500">
+        <div id="sidebarFooter" class="p-3 bg-slate-950 border-t border-slate-800 space-y-2 transition-opacity">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span id="apiKeyTrigger" onclick="toggleKeyInput()" class="cursor-pointer border border-slate-700 rounded px-1.5 py-0.5 text-[10px] select-none hover:border-slate-500 transition" title="Set Gemini API Key">🧠{}🔑</span>
+                    <button onclick="toggleMic()" id="btn-mic" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Voice input">🎤</button>
+                    <button onclick="toggleTTS()" id="btn-tts" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Read AI responses aloud">🔇</button>
+                    <button onclick="document.getElementById('lcSeedWrap').classList.toggle('hidden')" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Paste LeetCode problem list">📋</button>
+                </div>
+                <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest">Engine Standby</div>
+            </div>
+            <div id="apiKeyRow" class="hidden flex gap-1">
+                <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'){saveGeminiKey()}if(event.key==='Escape'){closeKeyInput()}">
                 <button onclick="saveGeminiKey()" class="bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded hover:bg-blue-500">Set</button>
-                <button onclick="document.getElementById('lcSeedWrap').classList.toggle('hidden')" title="Paste LeetCode problem list" class="bg-slate-700 text-white text-[9px] px-1.5 py-1 rounded hover:bg-slate-600">📋</button>
             </div>
             <div id="lcSeedWrap" class="hidden"><textarea id="lcSeedInput" rows="3" placeholder="Paste LeetCode JSON blob, press Enter" class="w-full bg-slate-900 border border-slate-700 text-[9px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500 resize-none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();seedLCFromPaste()}"></textarea></div>
             <div id="apiKeyStatus" class="text-[9px] text-green-400 text-center"></div>
-            <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Engine Standby</div>
         </div>
     </aside>
 
@@ -376,6 +389,8 @@
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
+            if (e.key === 'Escape' && micActive) { stopMic(); }
+            if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
         });
@@ -390,6 +405,7 @@
                             loadState();
                             fetchProblemList();
                             updateLangSelector();
+                            updateKeyIndicator();
                         });
                     });
                 } else { setTimeout(boot, 100); }
@@ -414,6 +430,26 @@
             if (k) { localStorage.setItem('gemini_api_key', k); document.getElementById('apiKeyStatus').innerText = 'Key saved'; }
             else { localStorage.removeItem('gemini_api_key'); document.getElementById('apiKeyStatus').innerText = 'Key cleared'; }
             setTimeout(() => document.getElementById('apiKeyStatus').innerText = '', 2000);
+            closeKeyInput();
+            updateKeyIndicator();
+        }
+
+        function toggleKeyInput() {
+            const row = document.getElementById('apiKeyRow');
+            if (row.classList.contains('hidden')) {
+                row.classList.remove('hidden');
+                document.getElementById('apiKeyInput').focus();
+            } else { closeKeyInput(); }
+        }
+
+        function closeKeyInput() {
+            document.getElementById('apiKeyRow').classList.add('hidden');
+        }
+
+        function updateKeyIndicator() {
+            const trigger = document.getElementById('apiKeyTrigger');
+            if (getGeminiKey()) { trigger.classList.remove('key-needed', 'border-slate-700'); trigger.classList.add('border-green-600'); }
+            else { trigger.classList.remove('border-green-600'); trigger.classList.add('key-needed'); }
         }
 
         function updateLangSelector() {
@@ -570,6 +606,7 @@
                     automaticLayout: true, minimap: {enabled: false}, fontSize: 13
                 });
                 ed.onDidChangeModelContent(() => { tabs[id].steps[key] = ed.getValue(); triggerSave(); });
+                ed.onDidFocusEditorText(() => { lastFocusedEditorKey = `${id}_${key}`; });
                 editors[`${id}_${key}`] = ed;
             };
 
@@ -672,6 +709,7 @@
                 const text = await geminiCall(`Explain optimal approach:\n${tabs[tabId].statement}`);
                 tabs[tabId].aiAnalysis = text;
                 if (activeTabId === tabId) body.innerHTML = marked.parse(text);
+                voiceSpeak(text);
                 triggerSave();
                 termDone('>>> Analysis complete.', '#10b981', tabId);
             } catch(e) { if (activeTabId === tabId) body.innerHTML = `<span class="text-red-400">${e.message}</span>`; termDone('>>> Analysis failed: ' + e.message, '#f87171', tabId); }
@@ -692,6 +730,7 @@
             try {
                 const text = await geminiCall(`Problem: ${tabs[tabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
                 if (activeTabId === tabId) { feedbackDiv.innerHTML = marked.parse(text); feedbackDiv.classList.remove('hidden'); }
+                voiceSpeak(text);
                 termDone(`>>> Step ${stepKey} validated.`, '#10b981', tabId);
             } catch (e) {
                 if (activeTabId === tabId && feedbackDiv) { feedbackDiv.innerHTML = `<span class="text-red-400">${e.message}</span>`; feedbackDiv.classList.remove('hidden'); }
@@ -1156,7 +1195,9 @@
             try {
                 const tid = tabId || activeTabId;
                 const prompt = `You are a concise coding tutor. Answer in <100 words.\n\nProblem: ${(tabs[tid]?.statement || '').slice(0,500)}\nSelected text from [${source}]: ${(selection||'').slice(0,500)}\n${refContext ? 'Referenced threads:\n' + refContext : ''}\nQuestion: ${question}`;
-                return await geminiCall(prompt);
+                const answer = await geminiCall(prompt);
+                voiceSpeak(answer);
+                return answer;
             } catch (e) { return 'Error: ' + e.message; }
         }
 
@@ -1408,7 +1449,85 @@
             setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 350);
         }
 
-        // Persist threads with workspace
+        // --- VOICE: STT & TTS ---
+        let lastFocusedEditorKey = null;
+        let micActive = false, recognition = null;
+        let ttsEnabled = false;
+
+        function toggleMic() {
+            const btn = document.getElementById('btn-mic');
+            if (micActive) { stopMic(); return; }
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) { alert('Speech recognition not supported in this browser. Use Chrome/Edge.'); return; }
+            recognition = new SR();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            let interimNode = null;
+            recognition.onresult = (e) => {
+                let interim = '', final = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    if (e.results[i].isFinal) final += e.results[i][0].transcript;
+                    else interim += e.results[i][0].transcript;
+                }
+                if (final) insertVoiceText(final);
+            };
+            recognition.onerror = (e) => { if (e.error !== 'no-speech') stopMic(); };
+            recognition.onend = () => { if (micActive) try { recognition.start(); } catch {} };
+            recognition.start();
+            micActive = true;
+            btn.innerText = '🎤';
+            btn.classList.add('text-red-400');
+            btn.classList.remove('text-slate-500');
+        }
+
+        function stopMic() {
+            micActive = false;
+            if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+            const btn = document.getElementById('btn-mic');
+            btn.innerText = '🎤';
+            btn.classList.remove('text-red-400');
+            btn.classList.add('text-slate-500');
+        }
+
+        function insertVoiceText(text) {
+            // Try last focused Monaco editor
+            if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
+                const ed = editors[lastFocusedEditorKey];
+                const pos = ed.getPosition();
+                ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
+                return;
+            }
+            // Try focused input/textarea
+            const el = document.activeElement;
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                const start = el.selectionStart || 0;
+                el.value = el.value.slice(0, start) + text + el.value.slice(start);
+                el.selectionStart = el.selectionEnd = start + text.length;
+                el.dispatchEvent(new Event('input'));
+            }
+        }
+
+        function toggleTTS() {
+            ttsEnabled = !ttsEnabled;
+            const btn = document.getElementById('btn-tts');
+            btn.innerText = ttsEnabled ? '🔊' : '🔇';
+            if (ttsEnabled) { btn.classList.add('text-green-400'); btn.classList.remove('text-slate-500'); }
+            else { btn.classList.remove('text-green-400'); btn.classList.add('text-slate-500'); speechSynthesis.cancel(); }
+        }
+
+        function voiceSpeak(text) {
+            if (!ttsEnabled || !text) return;
+            speechSynthesis.cancel();
+            const clean = text.replace(/```[\s\S]*?```/g, ' code block ').replace(/[#*_`~>|\-\[\]()]/g, '').replace(/\s+/g, ' ').trim();
+            if (!clean) return;
+            const chunks = clean.match(/.{1,200}(\s|$)/g) || [clean];
+            chunks.forEach(chunk => {
+                const utt = new SpeechSynthesisUtterance(chunk.trim());
+                utt.rate = 1.1;
+                speechSynthesis.speak(utt);
+            });
+        }
     </script>
 </body>
 </html>
