@@ -33,6 +33,43 @@
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+
+        /* Contextual Popup */
+        #ctxPopup { position: fixed; z-index: 600; background: #0f172a; border: 1px solid #3b82f6; border-radius: 10px; padding: 6px; box-shadow: 0 8px 32px rgba(0,0,0,.6); display: none; width: 320px; }
+        #ctxPopup input { background: transparent; border: none; outline: none; color: #f8fafc; font-size: 13px; width: 100%; padding: 6px 8px; font-family: 'Inter', sans-serif; }
+        #ctxPopup input::placeholder { color: #475569; }
+
+        /* Chat Sidebar */
+        #chatPanel { width: 260px; flex-shrink: 0; border-left: 1px solid #1e293b; background: #0a0f1a; display: none; flex-direction: column; }
+        .thread-bubble { background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 8px; font-size: 12px; transition: border-color .2s; }
+        .thread-bubble:hover { border-color: #334155; }
+        .thread-hash { font-family: 'Fira Code', monospace; font-size: 9px; color: #3b82f6; cursor: pointer; opacity: .6; }
+        .thread-hash:hover { opacity: 1; }
+        .thread-q { color: #94a3b8; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .thread-a { color: #cbd5e1; margin-top: 6px; }
+        .thread-replies-cta { color: #3b82f6; font-size: 10px; font-weight: 900; cursor: pointer; margin-top: 6px; text-transform: uppercase; letter-spacing: .05em; }
+        .thread-replies-cta:hover { text-decoration: underline; }
+        .thread-reply { background: #0f172a; border-left: 2px solid #1e293b; padding: 8px 10px; margin-top: 6px; border-radius: 6px; font-size: 11px; }
+
+        /* Maximized editor overlay */
+        .editor-maximized { position: absolute !important; inset: 0; z-index: 400; height: auto !important; border-radius: 0 !important; }
+        .editor-maximized.has-terminal { bottom: 30% !important; }
+        #terminalDocked { position: absolute; bottom: 0; left: 0; right: 0; height: 30%; z-index: 401; background: #000; border-top: 1px solid #1e293b; display: none; flex-direction: column; }
+        #terminalDocked.minimized { height: 28px; }
+        #terminalDocked.minimized pre { display: none; }
+        .maximize-btn { cursor: pointer; font-size: 14px; color: #475569; padding: 2px 4px; }
+        .maximize-btn:hover { color: #3b82f6; }
+
+        /* Auto-hide description */
+        #descriptionBar { transition: max-height .3s ease, opacity .3s ease, padding .3s ease; max-height: 200px; }
+        #descriptionBar.desc-hidden { max-height: 0; opacity: 0; pointer-events: none; padding-top: 0; padding-bottom: 0; overflow: hidden; border: none; }
+        #descriptionBar.desc-hidden.desc-peek { max-height: 200px; opacity: 1; pointer-events: auto; padding: 1rem; overflow: visible; border-bottom: 1px solid #0f172a; }
+        #descLeftPanel { transition: width .3s ease, opacity .3s ease; overflow: hidden; }
+        #descLeftPanel.desc-hidden { width: 0 !important; opacity: 0; pointer-events: none; border: none; }
+        #descLeftPanel.desc-hidden.desc-peek { width: 320px !important; opacity: 1; pointer-events: auto; border-right: 1px solid #1e293b; }
+        #atMentionPopup { position: fixed; z-index: 650; background: #1e293b; border: 1px solid #334155; border-radius: 8px; max-height: 180px; overflow-y: auto; display: none; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+        .at-mention-item { padding: 8px 12px; cursor: pointer; font-size: 11px; font-weight: 700; color: #94a3b8; display: flex; justify-content: space-between; }
+        .at-mention-item:hover { background: #3b82f6; color: white; }
     </style>
 </head>
 <body class="flex h-screen w-screen">
@@ -44,35 +81,50 @@
         </div>
         <div id="sidebarList" class="flex-1 overflow-y-auto p-4 space-y-2 custom-scroll">
             </div>
-        <div class="p-4 bg-slate-950 border-t border-slate-800">
+        <div class="p-4 bg-slate-950 border-t border-slate-800 space-y-2">
+            <div class="flex gap-1">
+                <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500">
+                <button onclick="saveGeminiKey()" class="bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded hover:bg-blue-500">Set</button>
+            </div>
+            <div id="apiKeyStatus" class="text-[9px] text-green-400 text-center"></div>
             <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Engine Standby</div>
         </div>
     </aside>
 
-    <main class="flex-1 flex flex-col relative bg-slate-950">
+    <main class="flex-1 flex flex-col relative bg-slate-950" style="min-width:0">
         <div id="tabsHeader" class="flex h-12 bg-slate-900 border-b border-slate-800 overflow-x-auto no-scrollbar">
             </div>
 
-        <div id="activeContent" class="flex-1 flex flex-col overflow-hidden hidden">
-            
-            <div class="p-6 border-b border-slate-900 bg-slate-900/20">
-                <div class="flex justify-between items-start mb-4">
-                    <h2 id="viewTitle" class="text-2xl font-black text-white tracking-tight"></h2>
-                    <div class="flex gap-4">
-                        <button onclick="setView('workbook')" id="btn-workbook" class="view-mode-btn view-mode-active">Workbook</button>
-                        <button onclick="setView('reference')" id="btn-reference" class="view-mode-btn">AI Reference</button>
-                    </div>
-                </div>
-                <div id="descriptionBox" class="text-sm text-slate-400 max-h-32 overflow-y-auto custom-scroll prose prose-invert prose-sm max-w-none border-t border-slate-800 pt-4 italic">
-                    </div>
-            </div>
+        <div id="activeContent" class="flex-1 flex flex-col overflow-hidden hidden" style="min-width:0">
 
-            <div id="workbookView" class="flex-1 overflow-y-auto p-8 custom-scroll" style="width: 80%;">
+            <!-- Persistent view controls bar -->
+            <div id="tabControlsBar" class="flex items-center justify-between px-6 py-2 border-b border-slate-800 bg-slate-900/40 shrink-0">
+                <div class="flex items-center gap-3">
+                    <h3 id="tabTitle" class="text-lg font-black text-white tracking-tight"></h3>
+                    <button onclick="toggleDescHide()" id="btn-desc-toggle" class="text-[9px] font-black text-slate-500 hover:text-blue-400" title="Toggle description">▼</button>
+                    <button onclick="toggleDescDock()" id="btn-dock" class="text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-blue-400" title="Toggle description position">⬒ Dock Left</button>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <button onclick="setView('workbook')" id="btn-workbook" class="view-mode-btn view-mode-active">Workbook</button>
+                    <button onclick="setView('reference')" id="btn-reference" class="view-mode-btn">AI Reference</button>
+                </div>
+            </div>
+            
+          <div id="mainContentRow" class="flex-1 flex overflow-hidden" style="min-width:0">
+           <div id="descLeftPanel" class="hidden overflow-y-auto border-r border-slate-800 bg-slate-900/20 custom-scroll shrink-0" style="width:320px;" onmouseenter="descPeekIn()" onmouseleave="descPeekOut()"></div>
+           <div class="flex-1 flex flex-col overflow-hidden relative" style="min-width:0">
+            <div id="descriptionBar" class="border-b border-slate-900 bg-slate-900/20 shrink-0" onmouseenter="descPeekIn()" onmouseleave="descPeekOut()">
+                <div class="flex items-center justify-between px-4 py-1">
+                    <h2 id="descTitle" class="text-sm font-black text-slate-400 tracking-tight">Description</h2>
+                </div>
+                <div id="descriptionBox" class="px-4 pb-3 text-sm text-slate-400 max-h-32 overflow-y-auto custom-scroll prose prose-invert prose-sm max-w-none italic"></div>
+            </div>
+            <div id="workbookView" class="flex-1 overflow-auto p-8 custom-scroll" style="min-width:0">
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">01</span> Absorption & Constraints</div>
-                            <button onclick="validateStep('s1', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s1')" title="Maximize">⤢</span><button onclick="validateStep('s1', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s1" class="monaco-container"></div>
                         <div id="feedback-s1" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -80,7 +132,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">02</span> Pattern Hunt & Data Structures</div>
-                            <button onclick="validateStep('s2', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s2')" title="Maximize">⤢</span><button onclick="validateStep('s2', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s2" class="monaco-container"></div>
                         <div id="feedback-s2" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -88,7 +140,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">03</span> Logical Flow (Pseudocode)</div>
-                            <button onclick="validateStep('s3', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s3')" title="Maximize">⤢</span><button onclick="validateStep('s3', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s3" class="monaco-container"></div>
                         <div id="feedback-s3" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -96,7 +148,7 @@
                     <div>
                         <div class="step-header">
                             <div><span class="step-num">04.1</span> Dry Run & Edge Cases</div>
-                            <button onclick="validateStep('s4', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button>
+                            <div class="flex gap-2 items-center"><span class="maximize-btn" onclick="toggleMaximize('editor-s4')" title="Maximize">⤢</span><button onclick="validateStep('s4', this)" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Validate with AI</button></div>
                         </div>
                         <div id="editor-s4" class="monaco-container"></div>
                         <div id="feedback-s4" class="mt-2 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-sm text-blue-200 hidden prose prose-invert prose-sm max-w-none"></div>
@@ -107,14 +159,15 @@
                     <div class="flex justify-between items-end mb-2">
                         <div class="flex items-center gap-4">
                             <div class="step-header mb-0" style="margin-bottom: 0;"><span class="step-num">04.2</span> Implementation</div>
-                            <select id="langSelect" onchange="generateBoilerplate(this.value)" class="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-black uppercase px-2 py-1 rounded outline-none cursor-pointer hover:border-blue-500 transition">
+                            <select id="langSelect" onchange="changeLang(this.value)" class="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-black uppercase px-2 py-1 rounded outline-none cursor-pointer hover:border-blue-500 transition">
                                 <option value="python">Python</option>
                                 <option value="java">Java</option>
                                 <option value="javascript">JavaScript</option>
                             </select>
+                            <span class="maximize-btn" onclick="toggleMaximize('editor-code')" title="Maximize">⤢</span>
                         </div>
                         <div class="flex gap-2">
-                            <button onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
+                            <button data-gentests onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
                             <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                             <button onclick="runCode()" class="bg-green-600 text-white px-6 py-1 rounded font-black text-[10px] uppercase hover:bg-green-500 transition">Run Logic</button>
                         </div>
@@ -124,7 +177,21 @@
                 </div>
             </div>
 
-            <div id="referenceView" class="flex-1 overflow-y-auto p-8 custom-scroll hidden">
+            <!-- Docked terminal for maximized code editor -->
+            <div id="terminalDocked">
+                <div class="flex justify-between items-center px-3 py-1 border-b border-slate-800 bg-slate-900/50 shrink-0">
+                    <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Terminal</span>
+                    <div class="flex gap-2 items-center">
+                        <button data-gentests onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
+                        <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
+                        <button onclick="runCode()" class="bg-green-600 text-white px-4 py-0.5 rounded font-black text-[9px] uppercase hover:bg-green-500 transition">Run Logic</button>
+                        <button onclick="toggleDockedTerminal()" class="text-[9px] font-black text-slate-500 hover:text-blue-400 ml-1">_</button>
+                    </div>
+                </div>
+                <pre id="dockedTermContent" class="flex-1 p-3 overflow-auto text-[11px] font-mono" style="color:#10b981"></pre>
+            </div>
+
+            <div id="referenceView" class="flex-1 overflow-auto p-8 custom-scroll hidden" style="min-width:0">
                 <div class="max-w-4xl mx-auto space-y-8">
                     <div class="p-8 bg-slate-900 border border-slate-800 rounded-2xl">
                         <div class="flex justify-between items-center mb-6">
@@ -136,17 +203,39 @@
                         </div>
                     </div>
                     <div>
-                        <div class="step-header">Generated Unit Tests</div>
+                        <div class="step-header"><span>Generated Unit Tests</span><span class="maximize-btn" onclick="toggleMaximize('editor-tests')" title="Maximize">⤢</span></div>
                         <div id="editor-tests" class="monaco-container" style="height: 400px;"></div>
                     </div>
                 </div>
             </div>
+           </div>
+
+          <!-- Chat Sidebar -->
+          <div id="chatPanel">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+              <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Threads</span>
+              <button onclick="showAllThreads()" class="text-[9px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-400">All</button>
+            </div>
+            <div id="chatThreads" class="flex-1 overflow-y-auto p-3 custom-scroll"></div>
+            <div id="chatInputBar" class="p-3 border-t border-slate-800 hidden">
+              <div class="relative">
+                <input id="threadReplyInput" type="text" placeholder="Reply to thread..." class="w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter')sendThreadReply()" oninput="handleReplyAtMention(this)">
+              </div>
+            </div>
+          </div>
+         </div>
         </div>
 
         <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-800">
             <p class="font-black text-xs uppercase tracking-[0.5em]">No Active Workspace</p>
         </div>
     </main>
+
+    <!-- Contextual Popup -->
+    <div id="ctxPopup">
+      <input id="ctxInput" type="text" placeholder="Ask about this selection..." onkeydown="if(event.key==='Enter')submitCtxQuestion();if(event.key==='Escape'){event.stopPropagation();hideCtxPopup();}" oninput="handleCtxAtMention(this)">
+    </div>
+    <div id="atMentionPopup"></div>
 
     <div id="initModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[500]">
         <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-[550px] shadow-2xl">
@@ -181,6 +270,19 @@
 
     <script>
         let tabs = {}, activeTabId = null, editors = {}, allProblems = [], lcMap = {}, saveTimeout = null;
+        let chatThreads = {}, activeThreadView = null, replyingToThread = null, ctxSelection = '', ctxSource = '', ctxSourceEditorKey = null;
+        let safeCodeHashes = {};
+        let serverAvailable = false;
+        let maximizedEditor = null;
+
+        // --- 0. CTRL+S SAVE ---
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'M') { e.preventDefault(); if(e.target.classList?.contains('monaco-container')) toggleMaximize(e.target.id)}
+            if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
+            if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
+        });
 
         // --- 1. BOOTSTRAP ---
         window.onload = function() {
@@ -188,17 +290,62 @@
                 if (typeof require !== 'undefined') {
                     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
                     require(['vs/editor/editor.main'], () => {
-                        loadState();
-                        fetchProblemList();
+                        pingServer().then(() => {
+                            loadState();
+                            fetchProblemList();
+                            updateLangSelector();
+                        });
                     });
                 } else { setTimeout(boot, 100); }
             };
             boot();
         };
 
+        async function pingServer() {
+            try {
+                const res = await fetch('/ping', { signal: AbortSignal.timeout(2000) });
+                serverAvailable = res.ok;
+            } catch { serverAvailable = false; }
+            document.getElementById('syncStatus').innerText = serverAvailable ? 'Server Connected' : 'Browser-Only Mode';
+        }
+
+        function getGeminiKey() {
+            return localStorage.getItem('gemini_api_key') || '';
+        }
+
+        function saveGeminiKey() {
+            const k = document.getElementById('apiKeyInput').value.trim();
+            if (k) { localStorage.setItem('gemini_api_key', k); document.getElementById('apiKeyStatus').innerText = 'Key saved'; }
+            else { localStorage.removeItem('gemini_api_key'); document.getElementById('apiKeyStatus').innerText = 'Key cleared'; }
+            setTimeout(() => document.getElementById('apiKeyStatus').innerText = '', 2000);
+        }
+
+        function updateLangSelector() {
+            const sel = document.getElementById('langSelect');
+            if (!sel) return;
+            Array.from(sel.options).forEach(o => {
+                if (o.value === 'python' || o.value === 'java') {
+                    o.disabled = !serverAvailable;
+                    o.title = serverAvailable ? '' : 'Requires server';
+                }
+            });
+            if (!serverAvailable) sel.value = 'javascript';
+        }
+
         async function fetchProblemList() {
-            const res = await fetch('/get_leetcode_problems');
-            allProblems = await res.json();
+            const cached = localStorage.getItem('leetcode_problems');
+            if (cached) { try {
+                let arr = JSON.parse(cached);
+                if (arr[0]?.stat) arr = arr.map(x => ({title: x.stat.question__title, titleSlug: x.stat.question__title_slug}));
+                if (arr[0]?.title) { allProblems = arr; localStorage.setItem('leetcode_problems', JSON.stringify(arr)); }
+            } catch {} }
+            if (serverAvailable) {
+                try {
+                    const res = await fetch('/get_leetcode_problems');
+                    const data = await res.json();
+                    if (data.length) { allProblems = data; localStorage.setItem('leetcode_problems', JSON.stringify(data)); }
+                } catch {}
+            }
         }
 
         // --- 2. SEARCH & INIT ---
@@ -234,18 +381,30 @@
             } else if (searchVal && lcMap[searchVal]) {
                 title = searchVal;
                 const slug = lcMap[title];
-                btn.innerText = "SCRAPING...";
-                const res = await fetch('/get_problem_details', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({slug}) });
-                const d = await res.json();
-                statement = d.content;
+                btn.innerText = "FETCHING...";
+                if (serverAvailable) {
+                    try {
+                        const res = await fetch('/get_problem_details', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({slug}) });
+                        const d = await res.json();
+                        statement = d.content;
+                    } catch {}
+                }
+                if (statement === 'Manual problem description...' && getGeminiKey()) {
+                    try {
+                        const raw = await geminiCall(`Give the full problem statement for LeetCode problem "${title}" (slug: ${slug}). Include examples and constraints. Use HTML formatting.`);
+                        statement = raw;
+                    } catch {}
+                }
             } else if (searchVal) {
                 title = searchVal;
             }
 
             const id = 'tab-' + Date.now();
+            const defaultLang = serverAvailable ? 'python' : 'javascript';
+            const defaultCode = defaultLang === 'javascript' ? 'function solve(input) {\n    return null;\n}' : 'def solve(input_data):\n    return None';
             tabs[id] = { 
-                id, title, statement, 
-                steps: { s1:'', s2:'', s3:'', s4:'', code: 'def solve(input_data):\n    return None', tests: '' },
+                id, title, statement, lang: defaultLang,
+                steps: { s1:'', s2:'', s3:'', s4:'', code: defaultCode, tests: '' },
                 aiAnalysis: ''
             };
             
@@ -253,6 +412,7 @@
             selectTab(id);
             toggleModal(false);
             triggerSave();
+            if (getGeminiKey() && statement !== 'Manual problem description...') generateBoilerplate(defaultLang);
 
             document.getElementById('lcSearch').value = '';
             document.getElementById('customStatement').value = '';
@@ -266,7 +426,8 @@
 
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('activeContent').classList.remove('hidden');
-            document.getElementById('viewTitle').innerText = tabs[id].title;
+            document.getElementById('tabTitle').innerText = tabs[id].title;
+            document.getElementById('descTitle').innerText = tabs[id].title;
             document.getElementById('descriptionBox').innerHTML = tabs[id].statement;
             
             // Safely initialize the steps object if it doesn't exist from an older save state
@@ -298,16 +459,37 @@
 
             setupEd('editor-s1', 's1', 'markdown'); setupEd('editor-s2', 's2', 'markdown');
             setupEd('editor-s3', 's3', 'markdown'); setupEd('editor-s4', 's4', 'markdown');
-            setupEd('editor-code', 'code', tabs[id].lang || 'python'); setupEd('editor-tests', 'tests', tabs[id].lang || 'python');
+            const lang = tabs[id].lang || 'python';
+            setupEd('editor-code', 'code', lang); setupEd('editor-tests', 'tests', lang);
             
             const sel = document.getElementById('langSelect');
-            if(sel) sel.value = tabs[id].lang || 'python';
+            if(sel) sel.value = lang;
 
             if(tabs[id].aiAnalysis) document.getElementById('aiAnalysisBody').innerHTML = marked.parse(tabs[id].aiAnalysis);
             else document.getElementById('aiAnalysisBody').innerHTML = "Click 'Refresh' to analyze.";
 
+            // Restore terminal output for this tab
+            const term = document.getElementById('terminal');
+            term.innerText = tabs[id].terminalOutput || '';
+            term.style.color = tabs[id].terminalColor || '#10b981';
+
             renderTabs();
             setView('workbook');
+            applyDescDock();
+
+            // Hook selection listeners for contextual chat
+            Object.keys(editors).forEach(k => hookEditorSelection(k));
+
+            // Restore chat panel for this tab
+            activeThreadView = null;
+            replyingToThread = null;
+            document.getElementById('chatInputBar').classList.add('hidden');
+            if (chatThreads[id] && Object.keys(chatThreads[id]).length > 0) {
+                showChatPanel();
+                renderChatThreads();
+            } else {
+                renderChatThreads();
+            }
         }
 
         function setView(mode) {
@@ -318,14 +500,53 @@
         }
 
         // --- 4. AI & RUN ---
+        let spinnerInterval = null;
+        function termSpinner(msg) {
+            const term = document.getElementById('terminal');
+            const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+            let i = 0;
+            term.style.color = '#facc15';
+            term.innerText = `${frames[0]} ${msg}`;
+            spinnerInterval = setInterval(() => { i = (i + 1) % frames.length; term.innerText = `${frames[i]} ${msg}`; syncDockedTerminal(); }, 80);
+            return term;
+        }
+        function termDone(text, color) {
+            clearInterval(spinnerInterval);
+            const term = document.getElementById('terminal');
+            term.innerText = text; term.style.color = color || '#10b981';
+            saveTerminal(text, color || '#10b981');
+            syncDockedTerminal();
+        }
+
+        async function geminiCall(prompt) {
+            const key = getGeminiKey();
+            if (!key) throw new Error('Set your Gemini API key in the sidebar.');
+            if (serverAvailable) {
+                const res = await fetch('/gemini_proxy', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt, api_key: key}) });
+                const d = await res.json();
+                if (d.error) throw new Error(d.error);
+                return d.text;
+            }
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+            });
+            const d = await res.json();
+            if (d.error) throw new Error(d.error.message);
+            return d.candidates[0].content.parts[0].text;
+        }
+
         async function askGemini() {
             const body = document.getElementById('aiAnalysisBody');
             body.innerHTML = "<p class='animate-pulse text-blue-400 font-bold'>ANALYZING PATTERNS...</p>";
-            const res = await fetch('/solve', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({problem: tabs[activeTabId].statement}) });
-            const d = await res.json();
-            tabs[activeTabId].aiAnalysis = d.analysis;
-            body.innerHTML = marked.parse(d.analysis);
-            triggerSave();
+            termSpinner('Analyzing patterns...');
+            try {
+                const text = await geminiCall(`Explain optimal approach:\n${tabs[activeTabId].statement}`);
+                tabs[activeTabId].aiAnalysis = text;
+                body.innerHTML = marked.parse(text);
+                triggerSave();
+                termDone('>>> Analysis complete.', '#10b981');
+            } catch(e) { body.innerHTML = `<span class="text-red-400">${e.message}</span>`; termDone('>>> Analysis failed: ' + e.message, '#f87171'); }
         }
 
         async function validateStep(stepKey, btn) {
@@ -334,204 +555,234 @@
             btn.classList.add('animate-pulse');
             const feedbackDiv = document.getElementById(`feedback-${stepKey}`);
             if (feedbackDiv) feedbackDiv.classList.add('hidden');
-            
+            termSpinner(`Validating step ${stepKey}...`);
             try {
                 const content = editors[`${activeTabId}_${stepKey}`].getValue();
-                const res = await fetch('/validate_step', { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({
-                        statement: tabs[activeTabId].statement,
-                        step: stepKey,
-                        content: content
-                    }) 
-                });
-
-                const contentType = res.headers.get("content-type");
-                if (!res.ok || !contentType || !contentType.includes("application/json")) {
-                    throw new Error("Server returned an invalid HTML response. Is the Python route implemented?");
-                }
-
-                const d = await res.json();
-                
-                const newContent = d.enriched_content || d.content || d.result || d.text;
-                if (newContent && newContent !== content) {
-                    editors[`${activeTabId}_${stepKey}`].setValue(newContent);
-                    tabs[activeTabId].steps[stepKey] = newContent;
-                    triggerSave();
-                }
-
-                if (d.feedback) {
-                    feedbackDiv.innerHTML = marked.parse(d.feedback);
-                    feedbackDiv.classList.remove('hidden');
-                }
+                const text = await geminiCall(`Problem: ${tabs[activeTabId].statement}\nStep: ${stepKey}\nInput: ${content}\n\nGive short feedback (<60 words)`);
+                feedbackDiv.innerHTML = marked.parse(text);
+                feedbackDiv.classList.remove('hidden');
+                termDone(`>>> Step ${stepKey} validated.`, '#10b981');
             } catch (e) {
-                console.error("Validation failed:", e);
-                if (feedbackDiv) {
-                    feedbackDiv.innerHTML = `<span class="text-red-400 font-bold">Error:</span> <span class="text-red-300">${e.message}</span>`;
-                    feedbackDiv.classList.remove('hidden');
-                }
+                if (feedbackDiv) { feedbackDiv.innerHTML = `<span class="text-red-400">${e.message}</span>`; feedbackDiv.classList.remove('hidden'); }
+                termDone('>>> Validation failed: ' + e.message, '#f87171');
             } finally {
                 btn.innerText = originalText;
                 btn.classList.remove('animate-pulse');
             }
         }
 
+        function changeLang(lang) {
+            if (!activeTabId) return;
+            tabs[activeTabId].lang = lang;
+            const ed = editors[`${activeTabId}_code`];
+            if (ed) monaco.editor.setModelLanguage(ed.getModel(), lang);
+            const edT = editors[`${activeTabId}_tests`];
+            if (edT) monaco.editor.setModelLanguage(edT.getModel(), lang);
+            triggerSave();
+            generateBoilerplate(lang);
+        }
+
+        function saveTerminal(text, color) {
+            if (!activeTabId) return;
+            tabs[activeTabId].terminalOutput = text;
+            tabs[activeTabId].terminalColor = color;
+        }
+
         async function generateBoilerplate(lang) {
-            const term = document.getElementById('terminal');
-            term.innerText = `>>> Generating ${lang} boilerplate...`;
-
+            termSpinner(`Generating ${lang} boilerplate...`);
             try {
-                const res = await fetch('/generate_boilerplate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        statement: tabs[activeTabId].statement,
-                        language: lang
-                    })
-                });
-
-                const text = await res.text();
-
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch {
-                    throw new Error("Non-JSON response:\n" + text.slice(0, 200));
-                }
-
-                if (data.code) {
-                    const ed = editors[`${activeTabId}_code`];
-                    monaco.editor.setModelLanguage(ed.getModel(), lang);
-                    ed.setValue(data.code);
-
-                    term.innerText = ">>> Boilerplate generated.";
-                } else {
-                    term.innerText = ">>> Error: " + (data.error || "Unknown");
-                }
-
+                const javaHint = lang === 'java' ? ' For Java: use public class Main with public static void main.' : '';
+                const prompt = `Generate ONLY ${lang} boilerplate (no solution) for:\n${tabs[activeTabId].statement}\n\nUse function name: solve. Include main/entry point.${javaHint} ONLY code, NO markdown fences.`;
+                const raw = await geminiCall(prompt);
+                const code = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
+                const ed = editors[`${activeTabId}_code`];
+                monaco.editor.setModelLanguage(ed.getModel(), lang);
+                ed.setValue(code);
+                termDone('>>> Boilerplate generated.', '#10b981');
             } catch (e) {
-                term.innerText = ">>> ERROR:\n" + e.message;
+                termDone('>>> ERROR: ' + e.message, '#f87171');
             }
+        }
+
+        let testGenTimer = null, testGenCountdown = 0;
+
+        function getGenTestBtns() { return document.querySelectorAll('[data-gentests]'); }
+
+        function cancelTestGen() {
+            clearInterval(testGenTimer); testGenTimer = null;
+            getGenTestBtns().forEach(b => { b.innerHTML = 'Gen Tests'; });
+        }
+
+        function scheduleTestGen() {
+            cancelTestGen();
+            testGenCountdown = 9;
+            const update = () => getGenTestBtns().forEach(b => {
+                b.innerHTML = `Tests ready in ${testGenCountdown}s.. <span style="color:#f87171;cursor:pointer" onclick="event.stopPropagation();cancelTestGen()">[cancel]</span>`;
+            });
+            update();
+            testGenTimer = setInterval(() => {
+                testGenCountdown--;
+                if (testGenCountdown <= 0) { clearInterval(testGenTimer); testGenTimer = null; generateTests(); return; }
+                update();
+            }, 1000);
         }
 
         async function generateTests() {
-            const term = document.getElementById('terminal');
-            term.innerText = ">>> Gemini is reviewing code and generating tests...\n";
-            
-            const code = editors[`${activeTabId}_code`].getValue();
-            const selectedLang = document.getElementById('langSelect') ? document.getElementById('langSelect').value : 'python';
-            const langMap = { "python": "Python", "java": "Java", "javascript": "JavaScript" };
-
-            const res = await fetch('/generate_test_data', { 
-                method:'POST', 
-                headers:{'Content-Type':'application/json'}, 
-                body:JSON.stringify({
-                    statement: tabs[activeTabId].statement,
-                    code: code,
-                    language: langMap[selectedLang]
-                }) 
-            });
-            const d = await res.json();
-            if(d.test_script) {
-                editors[`${activeTabId}_tests`].setValue(d.test_script);
-                tabs[activeTabId].steps.tests = d.test_script;
+            cancelTestGen();
+            const btns = getGenTestBtns();
+            btns.forEach(b => { b.innerHTML = 'Generating...'; b.classList.add('animate-pulse'); });
+            termSpinner('Generating tests...');
+            try {
+                const code = editors[`${activeTabId}_code`].getValue();
+                const lang = document.getElementById('langSelect')?.value || 'python';
+                const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[activeTabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
+                const raw = await geminiCall(prompt);
+                const script = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
+                editors[`${activeTabId}_tests`].setValue(script);
+                tabs[activeTabId].steps.tests = script;
                 triggerSave();
-                term.innerText = ">>> Tests generated! Executing AI Test Runner...\n";
+                termDone('>>> Tests generated. Running...', '#10b981');
                 await runTests();
-            } else {
-                term.innerText = ">>> Error generating tests: " + (d.error || "Unknown error");
+            } catch(e) { termDone('>>> ERROR: ' + e.message, '#f87171'); }
+            finally { btns.forEach(b => { b.innerHTML = 'Gen Tests'; b.classList.remove('animate-pulse'); }); }
+        }
+
+        async function md5(text) {
+            const data = new TextEncoder().encode(text);
+            const buf = await crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function staticCodeCheck(code) {
+            const patterns = [/\bimport\s+os\b/, /\bsubprocess\b/, /\beval\s*\(/, /\bexec\s*\(/, /\b__import__\b/, /\bwhile\s*\(\s*true\s*\)/i, /\bProcess\b/, /\brequire\s*\(['"]child_process/];
+            for (const p of patterns) { if (p.test(code)) return { safe: false, reason: `Blocked pattern: ${p}` }; }
+            return { safe: true };
+        }
+
+        async function sanityCheck(code, lang) {
+            const hash = await md5(code);
+            if (safeCodeHashes[hash]) return { safe: true };
+            // Client-side static check always runs
+            const sc = staticCodeCheck(code);
+            if (!sc.safe) return sc;
+            // For server langs, also do server-side AI check
+            if (serverAvailable && lang !== 'javascript') {
+                try {
+                    const res = await fetch('/sanity_check', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code}) });
+                    const d = await res.json();
+                    if (!d.safe) return d;
+                } catch {}
             }
+            safeCodeHashes[hash] = true;
+            return { safe: true };
+        }
+
+        function runJsInSandbox(code) {
+            return new Promise(resolve => {
+                const iframe = document.createElement('iframe');
+                iframe.sandbox = 'allow-scripts';
+                iframe.style.display = 'none';
+                const logs = [];
+                const handler = e => {
+                    if (e.source !== iframe.contentWindow) return;
+                    if (e.data === '__DONE__') { cleanup(); resolve({ output: logs.join('\n'), success: true }); }
+                    else logs.push(e.data);
+                };
+                window.addEventListener('message', handler);
+                const wrapped = `<script>
+                    console.log = (...a) => parent.postMessage(a.map(String).join(' '), '*');
+                    console.error = console.log;
+                    try { ${code}\n } catch(e) { console.log('ERROR: ' + e.message); }
+                    parent.postMessage('__DONE__', '*');
+                <\/script>`;
+                iframe.srcdoc = wrapped;
+                document.body.appendChild(iframe);
+                const cleanup = () => { clearTimeout(timeout); window.removeEventListener('message', handler); iframe.remove(); };
+                const timeout = setTimeout(() => { cleanup(); resolve({ output: logs.join('\n') + '\n[TIMEOUT]', success: false }); }, 10000);
+            });
         }
 
         async function runCode() {
-            const term = document.getElementById('terminal');
-            term.innerText = ">>> Running logic...\n";
-
-            // Only grab the code, NO tests
+            const selectedLang = document.getElementById('langSelect').value;
             const fullScript = editors[`${activeTabId}_code`].getValue();
 
-            // ✅ FIX: get language from dropdown
-            const selectedLang = document.getElementById('langSelect').value;
-
-            const langMap = {
-                python: "Python",
-                java: "Java",
-                javascript: "JavaScript"
-            };
-
-            try {
-                const res = await fetch('/run_code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code: fullScript,
-                        language: langMap[selectedLang]
-                    })
-                });
-
-                const d = await res.json();
-
-                term.innerText = d.output;
-                term.style.color = d.success ? "#10b981" : "#f87171";
-
-            } catch (e) {
-                term.innerText = "ERROR: " + e.message;
+            if (selectedLang !== 'javascript') {
+                termSpinner('Sanity check...');
+                const check = await sanityCheck(fullScript, selectedLang);
+                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171'); return; }
             }
+
+            termSpinner('Running...');
+            let runSuccess = false;
+            if (selectedLang === 'javascript') {
+                const r = await runJsInSandbox(fullScript);
+                runSuccess = r.success;
+                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171');
+            } else if (serverAvailable) {
+                try {
+                    const langMap = { python:'Python', java:'Java' };
+                    const res = await fetch('/run_code', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code:fullScript, language:langMap[selectedLang]}) });
+                    const d = await res.json();
+                    runSuccess = d.success;
+                    termDone(d.output, d.success ? '#10b981' : '#f87171');
+                } catch(e) { termDone('ERROR: ' + e.message, '#f87171'); }
+            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171'); }
+            if (runSuccess) scheduleTestGen();
         }
 
         async function runTests() {
-            const term = document.getElementById('terminal');
-            term.innerText = ">>> Running code + tests...\n";
-
-            const fullScript =
-                editors[`${activeTabId}_code`].getValue() +
-                "\n\n" +
-                editors[`${activeTabId}_tests`].getValue();
-
             const selectedLang = document.getElementById('langSelect').value;
+            const fullScript = editors[`${activeTabId}_code`].getValue() + '\n\n' + editors[`${activeTabId}_tests`].getValue();
 
-            const langMap = {
-                python: "Python",
-                java: "Java",
-                javascript: "JavaScript"
-            };
-
-            try {
-                const res = await fetch('/run_code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code: fullScript,
-                        language: langMap[selectedLang]
-                    })
-                });
-
-                const d = await res.json();
-
-                term.innerText = d.output;
-                term.style.color = d.success ? "#10b981" : "#f87171";
-
-            } catch (e) {
-                term.innerText = "ERROR: " + e.message;
+            if (selectedLang !== 'javascript') {
+                termSpinner('Sanity check...');
+                const check = await sanityCheck(fullScript, selectedLang);
+                if (!check.safe) { termDone(`[BLOCKED] ${check.reason}`, '#f87171'); return; }
             }
+
+            termSpinner('Running code + tests...');
+            if (selectedLang === 'javascript') {
+                const r = await runJsInSandbox(fullScript);
+                termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171');
+            } else if (serverAvailable) {
+                try {
+                    const langMap = { python:'Python', java:'Java' };
+                    const res = await fetch('/run_code', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code:fullScript, language:langMap[selectedLang]}) });
+                    const d = await res.json();
+                    termDone(d.output, d.success ? '#10b981' : '#f87171');
+                } catch(e) { termDone('ERROR: ' + e.message, '#f87171'); }
+            } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171'); }
         }
 
-        // --- 5. PERSISTENCE ---
+        // --- 5. PERSISTENCE (localStorage always, server mirror when available) ---
         function triggerSave() {
             document.getElementById('syncStatus').innerText = "SYNCING...";
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
-                await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tabs, activeTabId}) });
+                const payload = { tabs, activeTabId, chatThreads };
+                localStorage.setItem('workspace_state', JSON.stringify(payload));
+                if (serverAvailable) {
+                    try { await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); } catch {}
+                }
                 document.getElementById('syncStatus').innerText = "Changes Saved.";
             }, 1000);
         }
 
         async function loadState() {
-            const res = await fetch('/load_workspace');
-            const data = await res.json();
-            if(data.tabs && Object.keys(data.tabs).length > 0) {
+            let data = null;
+            // localStorage wins
+            const local = localStorage.getItem('workspace_state');
+            if (local) { try { data = JSON.parse(local); } catch {} }
+            // Fall back to server
+            if ((!data || !data.tabs || Object.keys(data.tabs).length === 0) && serverAvailable) {
+                try {
+                    const res = await fetch('/load_workspace');
+                    data = await res.json();
+                } catch {}
+            }
+            if (data && data.tabs && Object.keys(data.tabs).length > 0) {
                 tabs = data.tabs;
+                chatThreads = data.chatThreads || {};
                 Object.values(tabs).forEach(t => addSidebarItem(t.id, t.title));
                 selectTab(data.activeTabId || Object.keys(tabs)[0]);
             }
@@ -539,10 +790,38 @@
 
         function addSidebarItem(id, title) {
             const item = document.createElement('div');
-            item.className = "p-3 rounded-xl text-[11px] font-bold text-slate-400 cursor-pointer transition hover:bg-slate-800 hover:text-white truncate flex items-center gap-3";
-            item.innerHTML = `<div class="w-1 h-1 rounded-full bg-slate-700"></div> ${title}`;
+            item.id = 'sidebar-' + id;
+            item.className = "group p-3 rounded-xl text-[11px] font-bold text-slate-400 cursor-pointer transition hover:bg-slate-800 hover:text-white flex items-center gap-2";
+            item.innerHTML = `<div class="w-1 h-1 rounded-full bg-slate-700 shrink-0"></div><span class="truncate flex-1">${esc(title)}</span><span class="hidden group-hover:flex gap-1 shrink-0"><button onclick="event.stopPropagation();renameProblem('${id}')" class="text-[9px] text-slate-500 hover:text-blue-400" title="Rename">✎</button><button onclick="event.stopPropagation();deleteProblem('${id}')" class="text-[9px] text-slate-500 hover:text-red-400" title="Delete">✕</button></span>`;
             item.onclick = () => selectTab(id);
             document.getElementById('sidebarList').appendChild(item);
+        }
+
+        function renameProblem(id) {
+            const newTitle = prompt('Rename problem:', tabs[id].title);
+            if (!newTitle || !newTitle.trim()) return;
+            tabs[id].title = newTitle.trim();
+            refreshSidebar();
+            if (activeTabId === id) { document.getElementById('tabTitle').innerText = tabs[id].title; document.getElementById('descTitle').innerText = tabs[id].title; renderTabs(); }
+            triggerSave();
+        }
+
+        function deleteProblem(id) {
+            if (!confirm('Delete "' + tabs[id].title + '"?')) return;
+            delete tabs[id];
+            delete chatThreads[id];
+            refreshSidebar();
+            triggerSave();
+            if (activeTabId === id) {
+                const remaining = Object.keys(tabs);
+                if (remaining.length) selectTab(remaining[0]);
+                else { activeTabId = null; document.getElementById('activeContent').classList.add('hidden'); document.getElementById('emptyState').classList.remove('hidden'); renderTabs(); }
+            } else { renderTabs(); }
+        }
+
+        function refreshSidebar() {
+            document.getElementById('sidebarList').innerHTML = '';
+            Object.values(tabs).forEach(t => addSidebarItem(t.id, t.title));
         }
 
         function renderTabs() {
@@ -562,6 +841,391 @@
         }
 
         function toggleModal(s) { document.getElementById('initModal').classList.toggle('hidden', !s); }
+
+        // --- 7. CONTEXTUAL CHAT SYSTEM ---
+        function genHash() {
+            const c = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let h = ''; for (let i = 0; i < 5; i++) h += c[Math.floor(Math.random() * c.length)];
+            return h;
+        }
+
+        function getTabThreads() {
+            if (!activeTabId) return {};
+            if (!chatThreads[activeTabId]) chatThreads[activeTabId] = {};
+            return chatThreads[activeTabId];
+        }
+
+        function showCtxPopup(x, y, selectedText, source, editorKey) {
+            ctxSelection = selectedText;
+            ctxSource = source;
+            ctxSourceEditorKey = editorKey || null;
+            const popup = document.getElementById('ctxPopup');
+            const inp = document.getElementById('ctxInput');
+            popup.style.left = Math.min(x, window.innerWidth - 340) + 'px';
+            popup.style.top = Math.min(y + 10, window.innerHeight - 50) + 'px';
+            popup.style.display = 'block';
+            inp.value = '';
+            setTimeout(() => inp.focus(), 50);
+        }
+
+        function hideCtxPopup() {
+            document.getElementById('ctxPopup').style.display = 'none';
+            document.getElementById('atMentionPopup').style.display = 'none';
+            if (ctxSourceEditorKey && editors[ctxSourceEditorKey]) {
+                editors[ctxSourceEditorKey].focus();
+            }
+            ctxSourceEditorKey = null;
+        }
+
+        document.addEventListener('mousedown', e => {
+            if (!e.target.closest('#ctxPopup') && !e.target.closest('#atMentionPopup')) hideCtxPopup();
+        });
+
+        let ctxDelayTimer = null;
+
+        function scheduleCtxPopup(x, y, text, source, editorKey) {
+            clearTimeout(ctxDelayTimer);
+            ctxDelayTimer = setTimeout(() => {
+                // Re-check selection is still there
+                if (editorKey && editors[editorKey]) {
+                    const ed = editors[editorKey];
+                    const cur = ed.getModel().getValueInRange(ed.getSelection()).trim();
+                    if (cur.length > 2) showCtxPopup(x, y, cur, source, editorKey);
+                } else {
+                    const cur = window.getSelection().toString().trim();
+                    if (cur.length > 2) showCtxPopup(x, y, cur, source);
+                }
+            }, 3000);
+        }
+
+        function hookEditorSelection(editorKey) {
+            const ed = editors[editorKey];
+            if (!ed) return;
+            ed.onDidChangeCursorSelection(e => {
+                clearTimeout(ctxDelayTimer);
+                const sel = ed.getModel().getValueInRange(e.selection).trim();
+                if (sel.length > 2) {
+                    const pos = ed.getScrolledVisiblePosition(e.selection.getStartPosition());
+                    const domNode = ed.getDomNode();
+                    if (pos && domNode) {
+                        const rect = domNode.getBoundingClientRect();
+                        scheduleCtxPopup(rect.left + pos.left, rect.top + pos.top + pos.height, sel, editorKey.split('_').pop(), editorKey);
+                    }
+                }
+            });
+        }
+
+        // Hook text selection on rendered HTML areas (description + AI analysis)
+        document.addEventListener('mouseup', e => {
+            if (e.target.closest('#ctxPopup') || e.target.closest('#atMentionPopup')) return;
+            clearTimeout(ctxDelayTimer);
+            const sel = window.getSelection().toString().trim();
+            if (sel.length < 2) return;
+            const desc = document.getElementById('descriptionBox');
+            const descBar = document.getElementById('descriptionBar');
+            const descLeft = document.getElementById('descLeftPanel');
+            const ai = document.getElementById('aiAnalysisBody');
+            if ((desc && desc.contains(e.target)) || (descBar && descBar.contains(e.target)) || (descLeft && descLeft.contains(e.target))) scheduleCtxPopup(e.clientX, e.clientY, sel, 'statement');
+            else if (ai && ai.contains(e.target)) scheduleCtxPopup(e.clientX, e.clientY, sel, 'ai-analysis');
+            else if (e.target.closest('[id^="feedback-"]')) scheduleCtxPopup(e.clientX, e.clientY, sel, 'feedback');
+        });
+
+        function resolveRefHashes(text) {
+            const refs = [];
+            const pattern = /@([a-z0-9]{5})/g;
+            let m;
+            while ((m = pattern.exec(text)) !== null) {
+                refs.push(m[1]);
+                text = text.replace(m[0], '').trim();
+            }
+            return { cleanText: text, refs };
+        }
+
+        function buildRefContext(refs) {
+            const threads = getTabThreads();
+            let ctx = '';
+            refs.forEach(h => {
+                const t = threads[h];
+                if (t) {
+                    ctx += `\n[Referenced thread ${h}]\nQ: ${t.question}\nA: ${t.messages[0]?.answer || ''}\n`;
+                    t.messages.slice(1).forEach(r => { ctx += `Follow-up Q: ${r.question}\nA: ${r.answer}\n`; });
+                }
+            });
+            return ctx;
+        }
+
+        async function submitCtxQuestion() {
+            const inp = document.getElementById('ctxInput');
+            const raw = inp.value.trim();
+            if (!raw) return;
+            hideCtxPopup();
+
+            const { cleanText, refs } = resolveRefHashes(raw);
+            const hash = genHash();
+            const threads = getTabThreads();
+            threads[hash] = { hash, question: cleanText, selection: ctxSelection, source: ctxSource, messages: [], expanded: false };
+
+            showChatPanel();
+            activeThreadView = null;
+            replyingToThread = null;
+            renderChatThreads();
+
+            const refCtx = buildRefContext(refs);
+            const answer = await callChat(cleanText, ctxSelection, ctxSource, refCtx);
+            threads[hash].messages.push({ question: cleanText, answer });
+            renderChatThreads();
+            triggerSave();
+        }
+
+        async function sendThreadReply() {
+            if (!replyingToThread) return;
+            const inp = document.getElementById('threadReplyInput');
+            const raw = inp.value.trim();
+            if (!raw) return;
+            inp.value = '';
+
+            const { cleanText, refs } = resolveRefHashes(raw);
+            const threads = getTabThreads();
+            const t = threads[replyingToThread];
+            if (!t) return;
+
+            const refCtx = buildRefContext(refs);
+            // Thread-local context only: original selection + this thread's history
+            let threadCtx = `Original selection: ${t.selection}\n`;
+            t.messages.forEach(m => { threadCtx += `Q: ${m.question}\nA: ${m.answer}\n`; });
+
+            const answer = await callChat(cleanText, threadCtx, t.source, refCtx);
+            t.messages.push({ question: cleanText, answer });
+            renderChatThreads();
+            triggerSave();
+        }
+
+        async function callChat(question, selection, source, refContext) {
+            try {
+                const prompt = `You are a concise coding tutor. Answer in <100 words.\n\nProblem: ${(tabs[activeTabId]?.statement || '').slice(0,500)}\nSelected text from [${source}]: ${(selection||'').slice(0,500)}\n${refContext ? 'Referenced threads:\n' + refContext : ''}\nQuestion: ${question}`;
+                return await geminiCall(prompt);
+            } catch (e) { return 'Error: ' + e.message; }
+        }
+
+        function showChatPanel() {
+            document.getElementById('chatPanel').style.display = 'flex';
+        }
+
+        function showAllThreads() {
+            activeThreadView = null;
+            replyingToThread = null;
+            document.getElementById('chatInputBar').classList.add('hidden');
+            renderChatThreads();
+        }
+
+        function openThread(hash) {
+            activeThreadView = hash;
+            replyingToThread = hash;
+            document.getElementById('chatInputBar').classList.remove('hidden');
+            renderChatThreads();
+            document.getElementById('threadReplyInput').focus();
+        }
+
+        function copyHash(hash) {
+            navigator.clipboard.writeText('@' + hash);
+            const el = document.getElementById('hash-' + hash);
+            if (el) { el.innerText = 'copied!'; setTimeout(() => { el.innerText = hash; }, 1000); }
+        }
+
+        function renderChatThreads() {
+            const container = document.getElementById('chatThreads');
+            const threads = getTabThreads();
+            const keys = Object.keys(threads).reverse();
+
+            if (activeThreadView && threads[activeThreadView]) {
+                const t = threads[activeThreadView];
+                let html = `<div class="thread-bubble" style="border-color:#334155">`;
+                html += `<div class="flex justify-between items-center mb-2"><span class="thread-hash" id="hash-${t.hash}" onclick="copyHash('${t.hash}')">${t.hash}</span><span class="text-[9px] text-slate-600 uppercase">${t.source}</span></div>`;
+                t.messages.forEach((m, i) => {
+                    if (i === 0) {
+                        html += `<div class="thread-q">${esc(m.question)}</div>`;
+                        html += `<div class="thread-a prose prose-invert prose-sm max-w-none">${marked.parse(m.answer)}</div>`;
+                    } else {
+                        html += `<div class="thread-reply"><div class="text-blue-400 font-bold text-[10px] mb-1">${esc(m.question)}</div><div class="text-slate-300 prose prose-invert prose-sm max-w-none">${marked.parse(m.answer)}</div></div>`;
+                    }
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+                return;
+            }
+
+            if (keys.length === 0) {
+                container.innerHTML = '<p class="text-[10px] text-slate-600 text-center mt-8 uppercase tracking-widest">Select text to start a thread</p>';
+                return;
+            }
+
+            let html = '';
+            keys.forEach(hash => {
+                const t = threads[hash];
+                const firstMsg = t.messages[0];
+                const qClip = t.question.length > 50 ? t.question.slice(0, 50) + '...' : t.question;
+                html += `<div class="thread-bubble">`;
+                html += `<div class="flex justify-between items-center mb-1"><span class="thread-hash" id="hash-${hash}" onclick="event.stopPropagation();copyHash('${hash}')">${hash}</span><span class="text-[9px] text-slate-600 uppercase">${t.source}</span></div>`;
+                html += `<div class="thread-q">${esc(qClip)}</div>`;
+                if (firstMsg) html += `<div class="thread-a prose prose-invert prose-sm max-w-none" style="max-height:80px;overflow:hidden">${marked.parse(firstMsg.answer)}</div>`;
+                else html += `<div class="text-blue-400 text-[10px] animate-pulse mt-1">Thinking...</div>`;
+                if (t.messages.length > 1) {
+                    html += `<div class="thread-replies-cta" onclick="openThread('${hash}')">${t.messages.length - 1} ${t.messages.length - 1 === 1 ? 'reply' : 'replies'}</div>`;
+                } else if (firstMsg) {
+                    html += `<div class="thread-replies-cta" onclick="openThread('${hash}')">Reply</div>`;
+                }
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        // --- @ Mention Popup ---
+        function showAtMentionPopup(inputEl) {
+            const threads = getTabThreads();
+            const keys = Object.keys(threads);
+            if (keys.length === 0) return;
+            const popup = document.getElementById('atMentionPopup');
+            const rect = inputEl.getBoundingClientRect();
+            popup.style.left = rect.left + 'px';
+            popup.style.top = (rect.top - Math.min(keys.length * 36, 180) - 4) + 'px';
+            popup.innerHTML = keys.map(h => {
+                const t = threads[h];
+                const clip = t.question.length > 35 ? t.question.slice(0, 35) + '...' : t.question;
+                return `<div class="at-mention-item" onclick="insertMention('${inputEl.id}','${h}')">
+                    <span class="font-mono text-blue-400">${h}</span>
+                    <span class="truncate ml-2">${esc(clip)}</span>
+                </div>`;
+            }).join('');
+            popup.style.display = 'block';
+        }
+
+        function insertMention(inputId, hash) {
+            const inp = document.getElementById(inputId);
+            const v = inp.value;
+            const atIdx = v.lastIndexOf('@');
+            inp.value = v.slice(0, atIdx) + '@' + hash + ' ';
+            document.getElementById('atMentionPopup').style.display = 'none';
+            inp.focus();
+        }
+
+        function handleCtxAtMention(el) {
+            if (el.value.endsWith('@')) showAtMentionPopup(el);
+            else document.getElementById('atMentionPopup').style.display = 'none';
+        }
+        function handleReplyAtMention(el) {
+            if (el.value.endsWith('@')) showAtMentionPopup(el);
+            else document.getElementById('atMentionPopup').style.display = 'none';
+        }
+
+        // --- MAXIMIZE / RESTORE EDITORS ---
+        function toggleMaximize(domId) {
+            const el = document.getElementById(domId);
+            const docked = document.getElementById('terminalDocked');
+            if (maximizedEditor === domId) {
+                el.classList.remove('editor-maximized', 'has-terminal');
+                el.style.height = '';
+                maximizedEditor = null;
+                if (docked) docked.style.display = 'none';
+            } else {
+                if (maximizedEditor) {
+                    const prev = document.getElementById(maximizedEditor);
+                    prev.classList.remove('editor-maximized', 'has-terminal');
+                    prev.style.height = '';
+                }
+                el.classList.add('editor-maximized');
+                maximizedEditor = domId;
+                // Show docked terminal for code editor
+                if (domId === 'editor-code' && docked) {
+                    el.classList.add('has-terminal');
+                    docked.style.display = 'flex';
+                    docked.classList.remove('minimized');
+                    syncDockedTerminal();
+                } else if (docked) {
+                    docked.style.display = 'none';
+                }
+            }
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        function syncDockedTerminal() {
+            const src = document.getElementById('terminal');
+            const dst = document.getElementById('dockedTermContent');
+            if (src && dst) { dst.innerText = src.innerText; dst.style.color = src.style.color; }
+        }
+
+        function toggleDockedTerminal() {
+            const docked = document.getElementById('terminalDocked');
+            const el = document.getElementById('editor-code');
+            docked.classList.toggle('minimized');
+            el.classList.toggle('has-terminal', !docked.classList.contains('minimized'));
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        // --- DESCRIPTION DOCK TOP / LEFT ---
+        let descDocked = localStorage.getItem('descDocked') || 'top';
+        let descHidden = localStorage.getItem('descHidden') === 'true';
+
+        function applyDescDock() {
+            const bar = document.getElementById('descriptionBar');
+            const leftPanel = document.getElementById('descLeftPanel');
+            const btn = document.getElementById('btn-dock');
+            const toggleBtn = document.getElementById('btn-desc-toggle');
+            if (descDocked === 'left') {
+                bar.style.display = 'none';
+                bar.classList.remove('desc-hidden');
+                leftPanel.classList.remove('hidden');
+                leftPanel.innerHTML = '';
+                const hdr = document.createElement('div');
+                hdr.className = 'flex items-center justify-between px-4 py-1 border-b border-slate-800 shrink-0';
+                hdr.innerHTML = `<span class="text-sm font-black text-slate-400">Description</span>`;
+                leftPanel.appendChild(hdr);
+                const desc = document.createElement('div');
+                desc.className = 'p-4 text-sm text-slate-400 prose prose-invert prose-sm max-w-none italic';
+                desc.innerHTML = tabs[activeTabId]?.statement || '';
+                leftPanel.appendChild(desc);
+                if (btn) btn.innerText = '⬓ Dock Top';
+                leftPanel.classList.toggle('desc-hidden', descHidden);
+            } else {
+                bar.style.display = '';
+                leftPanel.classList.add('hidden');
+                leftPanel.classList.remove('desc-hidden');
+                leftPanel.innerHTML = '';
+                if (btn) btn.innerText = '⬒ Dock Left';
+                bar.classList.toggle('desc-hidden', descHidden);
+            }
+            if (toggleBtn) toggleBtn.innerText = descHidden ? '▶' : '▼';
+        }
+
+        function toggleDescDock() {
+            descDocked = descDocked === 'top' ? 'left' : 'top';
+            localStorage.setItem('descDocked', descDocked);
+            applyDescDock();
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        function toggleDescHide() {
+            descHidden = !descHidden;
+            localStorage.setItem('descHidden', descHidden);
+            applyDescDock();
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
+        }
+
+        function descPeekIn() {
+            if (!descHidden) return;
+            const target = descDocked === 'left' ? document.getElementById('descLeftPanel') : document.getElementById('descriptionBar');
+            target.classList.add('desc-peek');
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 350);
+        }
+        function descPeekOut() {
+            if (!descHidden) return;
+            const target = descDocked === 'left' ? document.getElementById('descLeftPanel') : document.getElementById('descriptionBar');
+            target.classList.remove('desc-peek');
+            setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 350);
+        }
+
+        // Persist threads with workspace
     </script>
 </body>
 </html>
