@@ -70,26 +70,62 @@
         #atMentionPopup { position: fixed; z-index: 650; background: #1e293b; border: 1px solid #334155; border-radius: 8px; max-height: 180px; overflow-y: auto; display: none; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
         .at-mention-item { padding: 8px 12px; cursor: pointer; font-size: 11px; font-weight: 700; color: #94a3b8; display: flex; justify-content: space-between; }
         .at-mention-item:hover { background: #3b82f6; color: white; }
+
+        /* Sidebar width when collapsed */
+        .sidebar-collapsed {
+            width: 60px !important;
+        }
+
+        /* Vertical text for list items */
+        .sidebar-collapsed #sidebarList .list-item-text {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            font-size: 10px;
+            margin: 0 auto;
+        }
+
+        /* Header adjustments */
+        .sidebar-collapsed #headerTopRow {
+            flex-direction: column;
+        }
+
+        .sidebar-collapsed #sidebarTitle {
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-collapsed #sidebarFooter {
+            display: none;
+        }
     </style>
 </head>
 <body class="flex h-screen w-screen">
 
-    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col">
-        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
-            <h1 class="font-black text-xl tracking-tighter text-blue-500 italic">PATTERN_</h1>
-            <button onclick="toggleModal(true)" class="bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full font-bold flex items-center justify-center transition">+</button>
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col transition-all duration-300 ease-in-out group" id="sidebar-plus-title">
+        <div class="p-6 border-b border-slate-800 flex flex-col items-center gap-4 transition-all" id="sidebarHeader">
+            <div class="flex justify-between items-center w-full" id="headerTopRow">
+                <h1 id="sidebarTitle" class="font-black text-xl tracking-tighter text-blue-500 italic transition-all">PATTERN_</h1>
+                <button onclick="hamburgerHandler()" class="text-slate-400 hover:text-white transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+            </div>
+            <button id="plusBtn" onclick="toggleModal(true)" class="bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full font-bold flex items-center justify-center transition">+</button>
         </div>
-        <div id="sidebarList" class="flex-1 overflow-y-auto p-4 space-y-2 custom-scroll">
+
+        <div id="sidebarList" 
+            onmouseenter="sideBarHoverHandler(true)" 
+            onmouseleave="sideBarHoverHandler(false)"
+            class="flex-1 overflow-y-auto p-4 space-y-2 custom-scroll transition-all">
             </div>
-        <div class="p-4 bg-slate-950 border-t border-slate-800 space-y-2">
+
+        <div id="sidebarFooter" class="p-4 bg-slate-950 border-t border-slate-800 space-y-2 transition-opacity">
             <div class="flex gap-1">
-                <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500">
-                <button onclick="saveGeminiKey()" class="bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded hover:bg-blue-500">Set</button>
-                <button onclick="document.getElementById('lcSeedWrap').classList.toggle('hidden')" title="Paste LeetCode problem list" class="bg-slate-700 text-white text-[9px] px-1.5 py-1 rounded hover:bg-slate-600">📋</button>
+                <input id="apiKeyInput" type="password" placeholder="Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500">
+                <button onclick="saveGeminiKey()" class="bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded">Set</button>
             </div>
-            <div id="lcSeedWrap" class="hidden"><textarea id="lcSeedInput" rows="3" placeholder="Paste LeetCode JSON blob, press Enter" class="w-full bg-slate-900 border border-slate-700 text-[9px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500 resize-none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();seedLCFromPaste()}"></textarea></div>
-            <div id="apiKeyStatus" class="text-[9px] text-green-400 text-center"></div>
-            <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Engine Standby</div>
         </div>
     </aside>
 
@@ -283,6 +319,32 @@
         let safeCodeHashes = {};
         let serverAvailable = false;
         let maximizedEditor = null;
+
+        let isManuallyCollapsed = false;
+
+        function hamburgerHandler() {
+            const sidebar = document.getElementById('sidebar-plus-title');
+            isManuallyCollapsed = !sidebar.classList.contains('sidebar-collapsed');
+            
+            if (isManuallyCollapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+            }
+        }
+
+        function sideBarHoverHandler(isHovering) {
+            const sidebar = document.getElementById('sidebar-plus-title');
+            
+            // Only auto-expand if the user previously collapsed it via hamburger
+            if (isManuallyCollapsed) {
+                if (isHovering) {
+                    sidebar.classList.remove('sidebar-collapsed');
+                } else {
+                    sidebar.classList.add('sidebar-collapsed');
+                }
+            }
+        }
 
         const genMgr = {
             _active: null, _done: new Set(),
