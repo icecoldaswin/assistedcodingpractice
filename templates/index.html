@@ -131,12 +131,12 @@
         <div id="sidebarFooter" class="p-3 bg-slate-950 border-t border-slate-800 space-y-2 transition-opacity">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span id="apiKeyTrigger" onclick="toggleKeyInput()" class="cursor-pointer border border-slate-700 rounded px-1.5 py-0.5 text-[10px] select-none hover:border-slate-500 transition" title="Set Gemini API Key">🧠{}🔑</span>
+                    <span id="apiKeyTrigger" onclick="toggleKeyInput()" class="cursor-pointer border border-slate-700 rounded px-1.5 py-0.5 text-[10px] select-none hover:border-slate-500 transition" title="Set Gemini API Key"><b>{🗝}</b></span>
                     <button onclick="toggleMic()" id="btn-mic" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Voice input">🎤</button>
                     <button onclick="toggleTTS()" id="btn-tts" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Read AI responses aloud">🔇</button>
                     <button onclick="document.getElementById('lcSeedWrap').classList.toggle('hidden')" class="text-[11px] text-slate-500 hover:text-blue-400 transition" title="Paste LeetCode problem list">📋</button>
                 </div>
-                <div id="syncStatus" class="text-[9px] font-black text-slate-600 uppercase tracking-widest">Engine Standby</div>
+
             </div>
             <div id="apiKeyRow" class="hidden flex gap-1">
                 <input id="apiKeyInput" type="password" placeholder="Gemini API Key" class="flex-1 bg-slate-900 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'){saveGeminiKey()}if(event.key==='Escape'){closeKeyInput()}">
@@ -304,7 +304,7 @@
   <div id="statusBar" class="h-6 shrink-0 bg-slate-950 border-t border-slate-800 flex items-center px-4 gap-4 text-[10px] text-slate-500">
     <span id="statusMic" class="animate-pulse"></span>
     <span class="flex-1"></span>
-    <span id="statusRight"></span>
+    <span id="statusMsg"></span>
   </div>
 
     <div id="initModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[500]">
@@ -397,7 +397,7 @@
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleMic(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleVoice(); }
             if (e.key === 'Escape' && micActive) { stopMic(); }
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
@@ -428,7 +428,7 @@
                 const res = await fetch('/ping', { signal: AbortSignal.timeout(2000) });
                 serverAvailable = res.ok;
             } catch { serverAvailable = false; }
-            document.getElementById('syncStatus').innerText = serverAvailable ? 'Server Connected' : 'Browser-Only Mode';
+            setStatus(serverAvailable ? 'Server Connected' : 'Browser-Only Mode');
         }
 
         function getGeminiKey() {
@@ -948,7 +948,7 @@
         // --- 5. PERSISTENCE (localStorage always, server mirror when available) ---
         function triggerSave() {
             if (!stateLoaded || Object.keys(tabs).length === 0) return;
-            document.getElementById('syncStatus').innerText = "SYNCING...";
+            setStatus('Syncing...');
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
                 if (Object.keys(tabs).length === 0) return;
@@ -957,7 +957,7 @@
                 if (serverAvailable) {
                     try { await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); } catch {}
                 }
-                document.getElementById('syncStatus').innerText = "Changes Saved.";
+                setStatus('Saved');
             }, 1000);
         }
 
@@ -1476,18 +1476,36 @@
         const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
         const micShortcut = isMac ? '⌘+Shift+V' : 'Ctrl+Shift+V';
 
+        function setStatus(msg) {
+            const el = document.getElementById('statusMsg');
+            if (el) el.innerText = msg;
+        }
+
         function updateMicStatus() {
             const el = document.getElementById('statusMic');
             if (!el) return;
-            if (micActive) {
-                el.innerText = '🎤 Listening...';
+            if (micActive || ttsEnabled) {
+                const parts = [];
+                if (micActive) parts.push('🎤 Listening');
+                if (ttsEnabled) parts.push('🔊 Speaking');
+                el.innerText = parts.join(' · ');
                 el.style.color = '#f87171';
-                el.classList.add('animate-pulse');
             } else {
-                el.innerText = `🎤 Speech off · ${micShortcut} to activate`;
+                el.innerText = `🎤 Voice off · ${micShortcut}`;
                 el.style.color = '';
-                el.classList.add('animate-pulse');
             }
+        }
+
+        function toggleVoice() {
+            const turning = !micActive;
+            if (turning) {
+                if (!ttsEnabled) toggleTTS();
+                if (!micActive) toggleMic();
+            } else {
+                if (micActive) stopMic();
+                if (ttsEnabled) toggleTTS();
+            }
+            updateMicStatus();
         }
 
         function toggleMic() {
@@ -1568,6 +1586,7 @@
             btn.innerText = ttsEnabled ? '🔊' : '🔇';
             if (ttsEnabled) { btn.classList.add('text-green-400'); btn.classList.remove('text-slate-500'); }
             else { btn.classList.remove('text-green-400'); btn.classList.add('text-slate-500'); speechSynthesis.cancel(); }
+            updateMicStatus();
         }
 
         function voiceSpeak(text) {
