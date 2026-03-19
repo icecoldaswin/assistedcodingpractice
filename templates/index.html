@@ -106,7 +106,8 @@
         .key-needed { animation: keyNeeded 1.2s ease-in-out infinite; }
     </style>
 </head>
-<body class="flex h-screen w-screen">
+<body class="flex flex-col h-screen w-screen">
+  <div class="flex flex-1" style="min-height:0">
 
     <aside class="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col transition-all duration-300 ease-in-out group" id="sidebar-plus-title">
         <div class="p-6 border-b border-slate-800 flex flex-col items-center gap-4 transition-all" id="sidebarHeader">
@@ -298,6 +299,13 @@
       <input id="ctxInput" type="text" placeholder="Ask about this selection..." onkeydown="if(event.key==='Enter')submitCtxQuestion();if(event.key==='Escape'){event.stopPropagation();hideCtxPopup();}" oninput="handleCtxAtMention(this)">
     </div>
     <div id="atMentionPopup"></div>
+  </div>
+
+  <div id="statusBar" class="h-6 shrink-0 bg-slate-950 border-t border-slate-800 flex items-center px-4 gap-4 text-[10px] text-slate-500">
+    <span id="statusMic" class="animate-pulse"></span>
+    <span class="flex-1"></span>
+    <span id="statusRight"></span>
+  </div>
 
     <div id="initModal" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[500]">
         <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-[550px] shadow-2xl">
@@ -389,6 +397,7 @@
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleMic(); }
             if (e.key === 'Escape' && micActive) { stopMic(); }
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
@@ -406,6 +415,7 @@
                             fetchProblemList();
                             updateLangSelector();
                             updateKeyIndicator();
+                            updateMicStatus();
                         });
                     });
                 } else { setTimeout(boot, 100); }
@@ -1227,11 +1237,21 @@
             replyingToThread = null;
             renderChatThreads();
 
+            // Build rich context: code + thread history
+            let ctx = '';
+            const codeEd = editors[`${tabId}_code`];
+            if (codeEd) ctx += `My code:\n${codeEd.getValue().slice(0, 800)}\n`;
+            const thr = chatThreads[tabId] || {};
+            const thrKeys = Object.keys(thr).slice(-3);
+            if (thrKeys.length) {
+                ctx += 'Recent discussion:\n';
+                thrKeys.forEach(k => { const t = thr[k]; ctx += `Q: ${t.question}\nA: ${(t.messages[0]?.answer || '').slice(0, 200)}\n`; });
+            }
+
             const refCtx = buildRefContext(refs);
-            const answer = await callChat(cleanText, '', 'general', refCtx, tabId);
+            const answer = await callChat(cleanText, ctx, 'general', refCtx, tabId);
             threads[hash].messages.push({ question: cleanText, answer });
             if (activeTabId === tabId) renderChatThreads();
-            renderChatThreads();
             triggerSave();
         }
 
@@ -1451,63 +1471,95 @@
 
         // --- VOICE: STT & TTS ---
         let lastFocusedEditorKey = null;
-        let micActive = false, recognition = null;
+        let micActive = false, recognition = null, micRestartTimer = null;
         let ttsEnabled = false;
+        const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+        const micShortcut = isMac ? '⌘+Shift+V' : 'Ctrl+Shift+V';
+
+        function updateMicStatus() {
+            const el = document.getElementById('statusMic');
+            if (!el) return;
+            if (micActive) {
+                el.innerText = '🎤 Listening...';
+                el.style.color = '#f87171';
+                el.classList.add('animate-pulse');
+            } else {
+                el.innerText = `🎤 Speech off · ${micShortcut} to activate`;
+                el.style.color = '';
+                el.classList.add('animate-pulse');
+            }
+        }
 
         function toggleMic() {
             const btn = document.getElementById('btn-mic');
             if (micActive) { stopMic(); return; }
             const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SR) { alert('Speech recognition not supported in this browser. Use Chrome/Edge.'); return; }
+            if (!SR) { alert('Speech recognition not supported. Use Chrome/Edge.'); return; }
             recognition = new SR();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'en-US';
-            let interimNode = null;
             recognition.onresult = (e) => {
-                let interim = '', final = '';
+                let final = '';
                 for (let i = e.resultIndex; i < e.results.length; i++) {
                     if (e.results[i].isFinal) final += e.results[i][0].transcript;
-                    else interim += e.results[i][0].transcript;
                 }
                 if (final) insertVoiceText(final);
             };
-            recognition.onerror = (e) => { if (e.error !== 'no-speech') stopMic(); };
-            recognition.onend = () => { if (micActive) try { recognition.start(); } catch {} };
+            recognition.onerror = (e) => {
+                if (e.error === 'no-speech' || e.error === 'aborted') return;
+                stopMic();
+            };
+            recognition.onend = () => {
+                if (!micActive) return;
+                clearTimeout(micRestartTimer);
+                micRestartTimer = setTimeout(() => {
+                    if (micActive && recognition) try { recognition.start(); } catch { stopMic(); }
+                }, 300);
+            };
             try {
                 recognition.start();
                 micActive = true;
-                btn.innerText = '🎤';
                 btn.classList.add('text-red-400');
                 btn.classList.remove('text-slate-500');
+                updateMicStatus();
             } catch(err) { alert('Mic error: ' + err.message + '\nIf in iframe, add allow="microphone" to the iframe tag.'); }
         }
 
         function stopMic() {
             micActive = false;
+            clearTimeout(micRestartTimer);
             if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
             const btn = document.getElementById('btn-mic');
-            btn.innerText = '🎤';
             btn.classList.remove('text-red-400');
             btn.classList.add('text-slate-500');
+            updateMicStatus();
         }
 
         function insertVoiceText(text) {
-            // Try last focused Monaco editor
+            // 1. Last focused Monaco editor
             if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
                 const ed = editors[lastFocusedEditorKey];
-                const pos = ed.getPosition();
-                ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
-                return;
+                if (ed.hasTextFocus()) {
+                    const pos = ed.getPosition();
+                    ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
+                    return;
+                }
             }
-            // Try focused input/textarea
+            // 2. Focused input/textarea
             const el = document.activeElement;
-            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.id !== 'adHocChatInput') {
                 const start = el.selectionStart || 0;
                 el.value = el.value.slice(0, start) + text + el.value.slice(start);
                 el.selectionStart = el.selectionEnd = start + text.length;
                 el.dispatchEvent(new Event('input'));
+                return;
             }
+            // 3. Fallback: open chat panel, drop into ad-hoc input
+            showChatPanel();
+            const adHoc = document.getElementById('adHocChatInput');
+            adHoc.value += (adHoc.value ? ' ' : '') + text;
+            adHoc.focus();
         }
 
         function toggleTTS() {
