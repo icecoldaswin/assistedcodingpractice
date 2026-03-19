@@ -2,7 +2,7 @@
 
 A single-page interview prep tool designed for deliberate practice. Works standalone in the browser (no server required) — or with an optional Flask backend for Python/Java execution.
 
-Built to embed as an iframe on a blog. Users bring their own Gemini API key.
+Users bring their own Gemini API key, which is stored in their browser storage.
 
 ![Browser-Only](https://img.shields.io/badge/mode-browser--only-blue) ![Optional Server](https://img.shields.io/badge/server-optional-gray)
 
