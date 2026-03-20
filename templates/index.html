@@ -376,7 +376,7 @@
     </div>
 
     <script>
-        let tabs = {}, activeTabId = null, editors = {}, allProblems = [], lcMap = {}, saveTimeout = null, stateLoaded = false;
+        let tabs = {}, activeTabId = null, openTabs = new Set(), editors = {}, allProblems = [], lcMap = {}, saveTimeout = null, stateLoaded = false;
         let chatThreads = {}, activeThreadView = null, replyingToThread = null, ctxSelection = '', ctxSource = '', ctxSourceEditorKey = null;
         let safeCodeHashes = {};
         let serverAvailable = false;
@@ -612,6 +612,7 @@
             };
             
             addSidebarItem(id, title);
+            openTabs.add(id);
             selectTab(id);
             toggleModal(false);
             stateLoaded = true;
@@ -1012,7 +1013,7 @@
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
                 if (Object.keys(tabs).length === 0) return;
-                const payload = { tabs, activeTabId, chatThreads };
+                const payload = { tabs, activeTabId, chatThreads, openTabs: [...openTabs] };
                 localStorage.setItem('workspace_state', JSON.stringify(payload));
                 if (serverAvailable) {
                     try { await fetch('/save_workspace', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); } catch {}
@@ -1043,6 +1044,7 @@
             if (data && data.tabs && Object.keys(data.tabs).length > 0) {
                 tabs = data.tabs;
                 chatThreads = data.chatThreads || {};
+                openTabs = new Set(data.openTabs || Object.keys(tabs));
                 Object.values(tabs).forEach(t => addSidebarItem(t.id, t.title));
                 selectTab(data.activeTabId || Object.keys(tabs)[0]);
             }
@@ -1054,7 +1056,7 @@
             item.id = 'sidebar-' + id;
             item.className = "group p-3 rounded-xl text-[11px] font-bold text-slate-400 cursor-pointer transition hover:bg-slate-800 hover:text-white flex items-center gap-2";
             item.innerHTML = `<div class="w-1 h-1 rounded-full bg-slate-700 shrink-0"></div><span class="truncate flex-1">${esc(title)}</span><span class="hidden group-hover:flex gap-1 shrink-0"><button onclick="event.stopPropagation();renameProblem('${id}')" class="text-[9px] text-slate-500 hover:text-blue-400" title="Rename">✎</button><button onclick="event.stopPropagation();deleteProblem('${id}')" class="text-[9px] text-slate-500 hover:text-red-400" title="Delete">🗑</button></span>`;
-            item.onclick = () => selectTab(id);
+            item.onclick = () => { openTabs.add(id); selectTab(id); };
             document.getElementById('sidebarList').appendChild(item);
         }
 
@@ -1087,7 +1089,7 @@
 
         function renderTabs() {
             const h = document.getElementById('tabsHeader'); h.innerHTML = '';
-            Object.values(tabs).forEach(t => {
+            Object.values(tabs).filter(t => openTabs.has(t.id)).forEach(t => {
                 const d = document.createElement('div');
                 d.className = `px-6 flex items-center h-full text-[10px] font-black uppercase tracking-tighter cursor-pointer file-tab ${activeTabId === t.id ? 'active-file-tab' : 'text-slate-500 hover:bg-slate-800'}`;
                 d.innerHTML = `<span>${t.title}</span> <span onclick="event.stopPropagation(); closeTab('${t.id}')" class="ml-4 opacity-30 hover:opacity-100" title="Hide tab">×</span>`;
@@ -1097,12 +1099,14 @@
         }
 
         function closeTab(id) {
+            openTabs.delete(id);
             if(activeTabId === id) {
-                const remaining = Object.keys(tabs).filter(k => k !== id);
+                const remaining = [...openTabs];
                 if (remaining.length) selectTab(remaining[0]);
                 else { activeTabId = null; document.getElementById('activeContent').classList.add('hidden'); document.getElementById('emptyState').classList.remove('hidden'); }
             }
             renderTabs();
+            triggerSave();
         }
 
         function toggleModal(s) { document.getElementById('initModal').classList.toggle('hidden', !s); }
