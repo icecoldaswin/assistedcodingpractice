@@ -53,6 +53,7 @@ After the four steps, the **Implementation** section provides a full code editor
 - **Run Tests** — concatenates code + tests editors and executes together
 - **Sanity Check** — client-side static analysis blocks dangerous patterns (`eval`, `subprocess`, `__import__`, etc.). Server-side AI check for Python/Java.
 - **Safe Code Hash Cache** — previously approved code skips re-checking
+- **Debug Trace (🐛)** — AI instruments your code with trace points, runs it, and displays a step-by-step variable/condition trace table
 
 ### Voice (STT / TTS)
 - **Speech-to-Text (🎤)** — continuous speech recognition via Web Speech API
@@ -97,6 +98,7 @@ After the four steps, the **Implementation** section provides a full code editor
 | `Ctrl+Shift+L` | Clear Terminal |
 | `Ctrl+Shift+M` | Maximize/Restore focused editor |
 | `Ctrl+Shift+V` | Toggle Voice (STT + TTS) |
+| `Ctrl+Shift+D` | Debug (trace table) |
 | `Escape` | Cancel test gen timer / stop mic / stop TTS / restore maximized editor |
 
 ---

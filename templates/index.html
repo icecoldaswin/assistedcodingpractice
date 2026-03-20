@@ -25,6 +25,15 @@
         .term-tbl tr:hover td { background: #0f172a; }
         .term-tbl .pass { color: #10b981; }
         .term-tbl .fail { color: #f87171; }
+        .term-tbl tr.trace-active td { background: #1e3a5f; }
+        .term-tbl tr[data-srcline] { cursor: pointer; }
+        #debugTracePanel { display: none; background: #000; border-left: 1px solid #1e293b; overflow: auto; scrollbar-width: thin; }
+        #debugTracePanel .trace-hdr { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #1e293b; background: #0f172a; position: sticky; top: 0; z-index: 1; }
+        #debugTracePanel .trace-hdr span { font-size: 9px; font-weight: 900; color: #eab308; text-transform: uppercase; letter-spacing: .05em; }
+        #debugTracePanel .trace-hdr button { font-size: 11px; color: #64748b; cursor: pointer; padding: 2px 6px; }
+        #debugTracePanel .trace-hdr button:hover { color: #f87171; }
+        .debug-line-highlight { background: rgba(234,179,8,0.15); }
+        .debug-line-highlight-glyph { background: #eab308; width: 4px !important; margin-left: 3px; border-radius: 2px; }
         
         /* Tab & Navigation Styling */
         .file-tab { border-right: 1px solid #1e293b; transition: all 0.2s; }
@@ -236,9 +245,13 @@
                             <button data-gentests data-genaction onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
                             <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                             <button onclick="runCode()" class="bg-green-600 text-white px-6 py-1 rounded font-black text-[10px] uppercase hover:bg-green-500 transition">Run Logic</button>
+                            <button onclick="debugCode()" class="bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-yellow-600 hover:text-white transition">🐛 Debug</button>
                         </div>
                     </div>
-                    <div id="editor-code" class="code-main-container"></div>
+                    <div id="codeDebugRow" class="flex" style="height:450px">
+                        <div id="editor-code" class="code-main-container" style="flex:1;height:100%"></div>
+                        <div id="debugTracePanel"></div>
+                    </div>
                     <div class="w-full h-32 rounded-xl border border-slate-800 overflow-hidden shadow-inner flex">
                         <pre id="terminal" class="flex-1 p-4 overflow-auto" style="min-width:0"></pre>
                         <div id="termTable" class="flex-1 p-2 overflow-auto border-l border-slate-800 hidden" style="min-width:0"></div>
@@ -254,6 +267,7 @@
                         <button data-gentests data-genaction onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
                         <button onclick="runTests()" class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition">Run Tests</button>
                         <button onclick="runCode()" class="bg-green-600 text-white px-4 py-0.5 rounded font-black text-[9px] uppercase hover:bg-green-500 transition">Run Logic</button>
+                        <button onclick="debugCode()" class="bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 px-3 py-0.5 rounded font-black text-[9px] uppercase hover:bg-yellow-600 hover:text-white transition">🐛</button>
                         <button onclick="toggleDockedTerminal()" class="text-[9px] font-black text-slate-500 hover:text-blue-400 ml-1">_</button>
                     </div>
                 </div>
@@ -359,6 +373,7 @@
         let safeCodeHashes = {};
         let serverAvailable = false;
         let maximizedEditor = null;
+        let debugTraceActive = false, debugDecorations = [];
 
         let isManuallyCollapsed = false;
 
@@ -407,16 +422,18 @@
 
         // --- 0. CTRL+S SAVE ---
         document.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); clearTerminal(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); closeDebugTrace(); clearTerminal(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleVoice(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '?') { e.preventDefault(); clickNearestValidate(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); debugCode(); }
             if (e.key === 'Escape' && micActive) { stopMic(); }
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
+            if (e.key === 'Escape' && debugTraceActive) { e.preventDefault(); closeDebugTrace(); return; }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
         });
 
@@ -599,6 +616,7 @@
         // --- 3. EDITOR & VIEW MGMT ---
         function selectTab(id) {
             cancelTestGen();
+            closeDebugTrace();
             activeTabId = id;
             genMgr.clearAll();
 
@@ -1754,6 +1772,148 @@
             if (ttsEnabled) { btn.classList.add('text-green-400'); btn.classList.remove('text-slate-500'); }
             else { btn.classList.remove('text-green-400'); btn.classList.add('text-slate-500'); speechSynthesis.cancel(); }
             updateMicStatus();
+        }
+
+        // --- DEBUG TRACE ---
+        async function debugCode() {
+            const tabId = activeTabId;
+            if (!tabId) return;
+            const code = editors[`${tabId}_code`]?.getValue() || '';
+            if (!code.trim()) { termDone('No code to debug.', '#facc15', tabId); return; }
+            const lang = tabs[tabId].lang || 'javascript';
+            if (lang !== 'javascript') { termDone('[DEBUG] Only JavaScript supported for trace debugging.', '#facc15', tabId); return; }
+            const codeLines = code.split('\n');
+            const lineMap = codeLines.map((l, i) => `${i + 1}: ${l}`).join('\n');
+            termSpinner('AI analyzing code for trace instrumentation...', tabId);
+            try {
+                const prompt = `Instrument this JavaScript code for step-by-step debugging. Insert \`__trace({step, srcLine, line, vars, condition})\` calls:
+- After every variable assignment: __trace({step: N, srcLine: <original line number>, line: "description", vars: {varName: varValue, ...}})
+- At every condition evaluation: __trace({step: N, srcLine: <original line number>, line: "if/while condition", condition: "expression", result: booleanResult, vars: {relevant vars}})
+- At loop iterations: include loop counter in vars
+- At return statements: __trace with the return value
+
+Rules:
+- step must increment from 1
+- srcLine must be the ORIGINAL source line number (1-based) from the code below
+- vars must capture ALL variables in scope at that point
+- Do NOT define __trace, it is pre-defined
+- Return ONLY the instrumented code, NO markdown fences, NO explanation
+- Keep the original logic intact
+
+Numbered source:
+${lineMap}
+
+Code:
+${code}`;
+                const raw = await geminiCall(prompt);
+                const instrumented = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
+                termSpinner('Running instrumented code...', tabId);
+                const result = await runDebugSandbox(instrumented);
+                if (result.traceData && result.traceData.length) {
+                    showDebugTrace(result.traceData, tabId);
+                    termDone(result.output || `>>> Debug trace: ${result.traceData.length} steps captured.`, '#10b981', tabId);
+                } else {
+                    termDone(result.output || '(no trace data captured)', '#facc15', tabId);
+                }
+            } catch (e) { termDone('>>> Debug failed: ' + e.message, '#f87171', tabId); }
+        }
+
+        function runDebugSandbox(code) {
+            return new Promise(resolve => {
+                const iframe = document.createElement('iframe');
+                iframe.sandbox = 'allow-scripts';
+                iframe.style.display = 'none';
+                const logs = [];
+                let traceData = [];
+                const handler = e => {
+                    if (e.source !== iframe.contentWindow) return;
+                    if (e.data === '__DONE__') { cleanup(); resolve({ output: logs.join('\n'), success: true, traceData }); }
+                    else if (e.data && e.data.__type === 'trace') { traceData = e.data.data; }
+                    else if (e.data && e.data.__type === 'table') { /* ignore */ }
+                    else logs.push(e.data);
+                };
+                window.addEventListener('message', handler);
+                const wrapped = `<script>
+                    const __traces = [];
+                    function __trace(obj) {
+                        const row = {Step: obj.step || __traces.length + 1};
+                        if (obj.srcLine) row._srcLine = obj.srcLine;
+                        row.Line = obj.line || '';
+                        if (obj.condition !== undefined) { row.Condition = obj.condition; row.Result = obj.result; }
+                        if (obj.vars) { for (const [k,v] of Object.entries(obj.vars)) row[k] = typeof v === 'object' ? JSON.stringify(v) : v; }
+                        __traces.push(row);
+                    }
+                    const _send = (...a) => parent.postMessage(a.map(v => typeof v === 'object' ? JSON.stringify(v,null,2) : String(v)).join(' '), '*');
+                    console.log = (...a) => _send(...a);
+                    console.error = (...a) => _send(...a);
+                    try { ${code}\n } catch(e) { _send('ERROR: ' + e.message); }
+                    parent.postMessage({__type:'trace', data: __traces}, '*');
+                    parent.postMessage('__DONE__', '*');
+                <\/script>`;
+                iframe.srcdoc = wrapped;
+                document.body.appendChild(iframe);
+                const cleanup = () => { clearTimeout(timeout); window.removeEventListener('message', handler); iframe.remove(); };
+                const timeout = setTimeout(() => { cleanup(); resolve({ output: logs.join('\n') + '\n[TIMEOUT]', success: false, traceData }); }, 10000);
+            });
+        }
+
+        function showDebugTrace(data, tabId) {
+            const panel = document.getElementById('debugTracePanel');
+            const editorEl = document.getElementById('editor-code');
+            if (!panel || !data || !data.length) return;
+            debugTraceActive = true;
+            // Split: editor 50%, trace 50%
+            editorEl.style.flex = '1';
+            panel.style.display = 'block';
+            panel.style.flex = '1';
+            // Build table — hide _srcLine from display but keep as data attr
+            const displayKeys = Object.keys(data[0]).filter(k => k !== '_srcLine');
+            let html = '<div class="trace-hdr"><span>🐛 Debug Trace</span><button onclick="closeDebugTrace()" title="Close (Esc)">✕</button></div>';
+            html += '<table class="term-tbl"><thead><tr>' + displayKeys.map(k => `<th>${esc(String(k))}</th>`).join('') + '</tr></thead><tbody>';
+            data.forEach((r, i) => {
+                const srcLine = r._srcLine || '';
+                html += `<tr data-srcline="${srcLine}" data-idx="${i}" onclick="highlightTraceLine(${srcLine}, this)">`;
+                html += displayKeys.map(k => {
+                    const v = r[k]; const s = String(v ?? '');
+                    const cls = /^(true)$/i.test(s) ? 'pass' : /^(false)$/i.test(s) ? 'fail' : '';
+                    return `<td class="${cls}">${esc(s)}</td>`;
+                }).join('');
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            panel.innerHTML = html;
+            // Auto-highlight first row
+            const firstRow = panel.querySelector('tr[data-srcline]');
+            if (firstRow) highlightTraceLine(parseInt(firstRow.dataset.srcline) || 0, firstRow);
+            setTimeout(() => { const ed = editors[`${tabId}_code`]; if (ed && ed.layout) ed.layout(); }, 50);
+        }
+
+        function highlightTraceLine(srcLine, rowEl) {
+            const ed = editors[`${activeTabId}_code`];
+            if (!ed) return;
+            // Highlight row in table
+            const panel = document.getElementById('debugTracePanel');
+            panel.querySelectorAll('tr.trace-active').forEach(r => r.classList.remove('trace-active'));
+            if (rowEl) rowEl.classList.add('trace-active');
+            // Highlight line in editor
+            if (srcLine > 0) {
+                debugDecorations = ed.deltaDecorations(debugDecorations, [
+                    { range: new monaco.Range(srcLine, 1, srcLine, 1), options: { isWholeLine: true, className: 'debug-line-highlight', glyphMarginClassName: 'debug-line-highlight-glyph' } }
+                ]);
+                ed.revealLineInCenter(srcLine);
+            }
+        }
+
+        function closeDebugTrace() {
+            const panel = document.getElementById('debugTracePanel');
+            const editorEl = document.getElementById('editor-code');
+            if (panel) { panel.style.display = 'none'; panel.style.flex = ''; panel.innerHTML = ''; }
+            if (editorEl) editorEl.style.flex = '';
+            debugTraceActive = false;
+            // Clear editor decorations
+            const ed = editors[`${activeTabId}_code`];
+            if (ed) debugDecorations = ed.deltaDecorations(debugDecorations, []);
+            setTimeout(() => { if (ed && ed.layout) ed.layout(); }, 50);
         }
 
         function voiceSpeak(text) {
