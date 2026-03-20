@@ -129,6 +129,10 @@
             0%, 100% { border-color: #ef4444; }
             50% { border-color: #eab308; }
         }
+        #helpContent p { margin: 0 0 10px; }
+        #helpContent strong { color: #475569; }
+        #helpContent ol { margin: 0 0 10px; padding-left: 1.2em; }
+        #helpContent li { margin: 0; }
         .key-needed { animation: keyNeeded 1.2s ease-in-out infinite; }
     </style>
 </head>
@@ -326,8 +330,9 @@
          </div>
         </div>
 
-        <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-800">
-            <p class="font-black text-xs uppercase tracking-[0.5em]">No Active Workspace</p>
+        <div id="emptyState" class="absolute inset-0 flex flex-col items-center text-slate-800 overflow-hidden" style="padding-top:25vh">
+            <p class="font-black text-xs uppercase tracking-[0.5em] shrink-0">No Active Workspace</p>
+            <div id="helpContent" class="mt-8 overflow-y-auto custom-scroll px-4 text-slate-800" style="max-width:520px;font-size:12px;font-weight:700;line-height:1.7"></div>
         </div>
     </main>
 
@@ -460,6 +465,7 @@
                             updateLangSelector();
                             updateKeyIndicator();
                             updateMicStatus();
+                            renderHelp();
                         });
                     });
                 } else { setTimeout(boot, 100); }
@@ -2031,6 +2037,43 @@ ${code}`;
             const ed = editors[`${activeTabId}_code`];
             if (ed) debugDecorations = ed.deltaDecorations(debugDecorations, []);
             setTimeout(() => { if (ed && ed.layout) ed.layout(); }, 50);
+        }
+
+        function renderHelp() {
+            const md = `
+**Get started** — click **+** in the sidebar to open a problem.\
+Search the LeetCode catalog or paste your own problem statement.
+
+**Workflow** — four steps before code:\
+1 &nbsp;Restate the problem, inputs, outputs, edge cases\
+2 &nbsp;Identify patterns and data structures\
+3 &nbsp;Write pseudocode\
+4 &nbsp;Dry run through examples
+
+Each step has **Validate with AI** to get feedback from Gemini.
+
+**API key** — click {🗝} in the sidebar footer to set your Gemini key.\
+Stored in your browser only, never sent to any server for storage.
+
+**Code** — write your solution, then **Run Logic** or **Run Tests**.\
+JavaScript runs in-browser. Python/Java need the Flask server.
+
+**Debug** — 🐛 Debug instruments your code and shows a step-by-step trace table.\
+Arrow keys to step, Space to play/pause.
+
+**Shortcuts**\
+Ctrl+S &nbsp;save · Ctrl+' &nbsp;run · Ctrl+" &nbsp;gen tests\
+Ctrl+Shift+D &nbsp;debug · Ctrl+Shift+M &nbsp;maximize editor\
+Ctrl+Shift+V &nbsp;toggle voice (mic + TTS)
+
+**Chat** — select any text to ask a contextual question.\
+Threaded Q&A with @hash cross-references.
+
+**Tabs** — open multiple problems. Closing a tab hides it;\
+click it in the sidebar to reopen. Delete with 🗑.
+`;
+            const el = document.getElementById('helpContent');
+            if (el) el.innerHTML = marked.parse(md);
         }
 
         function voiceSpeak(text) {
