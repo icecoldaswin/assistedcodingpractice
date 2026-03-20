@@ -1118,12 +1118,87 @@
         }
 
         function clickNearestValidate() {
+            if (!activeTabId) return;
+            const codeKey = `${activeTabId}_code`;
+            // If focused in code editor, handle generate or review
+            if (lastFocusedEditorKey === codeKey || editors[codeKey]?.hasTextFocus()) {
+                handleCodeEditorAction(); return;
+            }
+            // Otherwise click nearest validate button
             const btns = document.querySelectorAll('[data-genaction]');
             for (const b of btns) {
                 if (b.textContent.trim().toLowerCase().includes('validate') && b.offsetParent !== null) {
                     b.click(); return;
                 }
             }
+        }
+
+        function handleCodeEditorAction() {
+            const tabId = activeTabId;
+            const ed = editors[`${tabId}_code`];
+            if (!ed) return;
+            const code = ed.getValue();
+            const genMatch = code.match(/^([ \t]*)\/\/\s*generate\s+(.+)$/m);
+            if (genMatch) {
+                generateHelperFunction(tabId, ed, code, genMatch);
+            } else {
+                sendCodeForReview(tabId, code);
+            }
+        }
+
+        async function generateHelperFunction(tabId, ed, code, genMatch) {
+            const fullMatch = genMatch[0];
+            const indent = genMatch[1];
+            const instruction = genMatch[2].trim();
+            // Find the comment line and the function stub after it
+            const lines = code.split('\n');
+            let commentIdx = -1;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes(fullMatch.trim())) { commentIdx = i; break; }
+            }
+            if (commentIdx === -1) return;
+            // Collect stub lines: comment + following lines until next blank line or closing brace
+            let stubEnd = commentIdx + 1;
+            const lang = tabs[tabId].lang || 'javascript';
+            for (let i = commentIdx + 1; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (trimmed === '') break;
+                stubEnd = i;
+                if (trimmed === '}' || (lang === 'python' && i > commentIdx + 1 && !lines[i].startsWith(' ') && !lines[i].startsWith('\t'))) break;
+            }
+            const stubLines = lines.slice(commentIdx, stubEnd + 1).join('\n');
+            termSpinner(`Generating ${instruction}...`, tabId);
+            try {
+                const prompt = `Implement this ${lang} helper function. Context: solving "${(tabs[tabId]?.statement || '').slice(0, 300)}"\n\nStub:\n${stubLines}\n\nReturn ONLY the complete function implementation. NO markdown fences. NO explanation. Match the indent style: "${indent || 'none'}".`;
+                const raw = await geminiCall(prompt);
+                const impl = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
+                // Replace the comment + stub with generated marker + implementation
+                const before = lines.slice(0, commentIdx);
+                const after = lines.slice(stubEnd + 1);
+                const newCode = [...before, `${indent}// generated: ${instruction}`, impl, ...after].join('\n');
+                if (activeTabId === tabId && editors[`${tabId}_code`]) {
+                    ed.setValue(newCode);
+                }
+                termDone(`>>> Generated: ${instruction}`, '#10b981', tabId);
+            } catch (e) {
+                termDone(`>>> Generation failed: ${e.message}`, '#f87171', tabId);
+            }
+        }
+
+        function sendCodeForReview(tabId, code) {
+            const question = 'Review my code progress — any issues or suggestions?';
+            const hash = genHash();
+            const threads = getTabThreads();
+            threads[hash] = { hash, question, selection: code.slice(0, 500), source: 'code', messages: [], expanded: false };
+            showChatPanel();
+            activeThreadView = null;
+            replyingToThread = null;
+            renderChatThreads();
+            callChat(question, code.slice(0, 1200), 'code', '', tabId).then(answer => {
+                threads[hash].messages.push({ question, answer });
+                if (activeTabId === tabId) renderChatThreads();
+                triggerSave();
+            });
         }
 
         function hideCtxPopup() {
