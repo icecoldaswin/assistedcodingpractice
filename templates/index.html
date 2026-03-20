@@ -16,7 +16,6 @@
         
         /* Layout Components */
         .monaco-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 220px; }
-        .code-main-container { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; background: #1e1e1e; height: 450px; }
         #terminal { background: #000; color: #10b981; font-family: 'Fira Code', monospace; font-size: 11px; scrollbar-width: thin; }
         #termTable, #dockedTermTable { background: #000; scrollbar-width: thin; }
         .term-tbl { width: 100%; border-collapse: collapse; font-family: 'Fira Code', monospace; font-size: 10px; }
@@ -239,7 +238,7 @@
                                 <option value="java">Java</option>
                                 <option value="javascript">JavaScript</option>
                             </select>
-                            <span class="maximize-btn" onclick="toggleMaximize('editor-code')" title="Maximize">⤢</span>
+                            <span class="maximize-btn" onclick="toggleMaximize('codeDebugRow')" title="Maximize">⤢</span>
                         </div>
                         <div class="flex gap-2">
                             <button data-gentests data-genaction onclick="generateTests()" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-purple-600 hover:text-white transition">Gen Tests</button>
@@ -248,8 +247,8 @@
                             <button onclick="debugCode()" class="bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 px-4 py-1 rounded font-black text-[10px] uppercase hover:bg-yellow-600 hover:text-white transition">🐛 Debug</button>
                         </div>
                     </div>
-                    <div id="codeDebugRow" class="flex" style="height:450px">
-                        <div id="editor-code" class="code-main-container" style="flex:1;height:100%"></div>
+                    <div id="codeDebugRow" class="flex" style="height:450px;border:1px solid #1e293b;border-radius:8px;overflow:hidden;background:#1e1e1e">
+                        <div id="editor-code" style="flex:1;height:100%;min-width:0"></div>
                         <div id="debugTracePanel"></div>
                     </div>
                     <div class="w-full h-32 rounded-xl border border-slate-800 overflow-hidden shadow-inner flex">
@@ -373,7 +372,7 @@
         let safeCodeHashes = {};
         let serverAvailable = false;
         let maximizedEditor = null;
-        let debugTraceActive = false, debugDecorations = [];
+        let debugTraceActive = false, debugDecorations = [], lastDebugHash = null, lastDebugTrace = null;
 
         let isManuallyCollapsed = false;
 
@@ -424,7 +423,7 @@
         document.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); closeDebugTrace(); clearTerminal(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); triggerSave(); }
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('.code-main-container'); if(mc) toggleMaximize(mc.id); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') { e.preventDefault(); const mc = e.target.closest('.monaco-container') || e.target.closest('#codeDebugRow'); if(mc) toggleMaximize(mc.id); }
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleVoice(); }
@@ -617,6 +616,7 @@
         function selectTab(id) {
             cancelTestGen();
             closeDebugTrace();
+            lastDebugHash = null; lastDebugTrace = null;
             activeTabId = id;
             genMgr.clearAll();
 
@@ -648,6 +648,7 @@
                     value: tabs[id].steps[key] || '',
                     language: lang, theme: 'vs-dark',
                     automaticLayout: true, minimap: {enabled: false}, fontSize: 13,
+                    glyphMargin: key === 'code',
                     wordWrap: 'on',
                     wrappingStrategy: 'advanced',
                     wrappingIndent: 'indent',
@@ -1536,7 +1537,7 @@
                 el.classList.add('editor-maximized');
                 maximizedEditor = domId;
                 // Show docked terminal for code editor
-                if (domId === 'editor-code' && docked) {
+                if (domId === 'codeDebugRow' && docked) {
                     el.classList.add('has-terminal');
                     docked.style.display = 'flex';
                     docked.classList.remove('minimized');
@@ -1586,7 +1587,7 @@
 
         function toggleDockedTerminal() {
             const docked = document.getElementById('terminalDocked');
-            const el = document.getElementById('editor-code');
+            const el = document.getElementById('codeDebugRow');
             docked.classList.toggle('minimized');
             el.classList.toggle('has-terminal', !docked.classList.contains('minimized'));
             setTimeout(() => Object.values(editors).forEach(ed => { if (ed && ed.layout) ed.layout(); }), 50);
@@ -1782,6 +1783,13 @@
             if (!code.trim()) { termDone('No code to debug.', '#facc15', tabId); return; }
             const lang = tabs[tabId].lang || 'javascript';
             if (lang !== 'javascript') { termDone('[DEBUG] Only JavaScript supported for trace debugging.', '#facc15', tabId); return; }
+            const hash = await md5(code);
+            // Reuse cached trace if code unchanged
+            if (hash === lastDebugHash && lastDebugTrace && lastDebugTrace.length) {
+                showDebugTrace(lastDebugTrace, tabId);
+                termDone(`>>> Debug trace (cached): ${lastDebugTrace.length} steps.`, '#10b981', tabId);
+                return;
+            }
             const codeLines = code.split('\n');
             const lineMap = codeLines.map((l, i) => `${i + 1}: ${l}`).join('\n');
             termSpinner('AI analyzing code for trace instrumentation...', tabId);
@@ -1810,6 +1818,8 @@ ${code}`;
                 termSpinner('Running instrumented code...', tabId);
                 const result = await runDebugSandbox(instrumented);
                 if (result.traceData && result.traceData.length) {
+                    lastDebugHash = hash;
+                    lastDebugTrace = result.traceData;
                     showDebugTrace(result.traceData, tabId);
                     termDone(result.output || `>>> Debug trace: ${result.traceData.length} steps captured.`, '#10b981', tabId);
                 } else {
@@ -1859,11 +1869,8 @@ ${code}`;
 
         function showDebugTrace(data, tabId) {
             const panel = document.getElementById('debugTracePanel');
-            const editorEl = document.getElementById('editor-code');
             if (!panel || !data || !data.length) return;
             debugTraceActive = true;
-            // Split: editor 50%, trace 50%
-            editorEl.style.flex = '1';
             panel.style.display = 'block';
             panel.style.flex = '1';
             // Build table — hide _srcLine from display but keep as data attr
@@ -1906,11 +1913,8 @@ ${code}`;
 
         function closeDebugTrace() {
             const panel = document.getElementById('debugTracePanel');
-            const editorEl = document.getElementById('editor-code');
             if (panel) { panel.style.display = 'none'; panel.style.flex = ''; panel.innerHTML = ''; }
-            if (editorEl) editorEl.style.flex = '';
             debugTraceActive = false;
-            // Clear editor decorations
             const ed = editors[`${activeTabId}_code`];
             if (ed) debugDecorations = ed.deltaDecorations(debugDecorations, []);
             setTimeout(() => { if (ed && ed.layout) ed.layout(); }, 50);
