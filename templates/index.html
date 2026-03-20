@@ -616,7 +616,7 @@
             toggleModal(false);
             stateLoaded = true;
             triggerSave();
-            if (getGeminiKey() && statement !== 'Manual problem description...') generateBoilerplate(defaultLang);
+            if (getGeminiKey() && statement !== 'Manual problem description...') generateBoilerplate(defaultLang).then(() => generateTests(true));
 
             document.getElementById('lcSearch').value = '';
             document.getElementById('customStatement').value = '';
@@ -724,6 +724,7 @@
             clearInterval(spinnerInterval);
             const tid = tabId || activeTabId;
             spinnerTabId = tid;
+            setStatus(msg);
             if (tid !== activeTabId) return;
             const term = document.getElementById('terminal');
             const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
@@ -739,6 +740,8 @@
             const tid = tabId || activeTabId;
             if (spinnerTabId === tid) { clearInterval(spinnerInterval); spinnerTabId = null; }
             if (tabs[tid]) { tabs[tid].terminalOutput = text; tabs[tid].terminalColor = color || '#10b981'; }
+            const short = text.replace(/^>>>\s*/, '').slice(0, 60);
+            setStatus(short);
             if (tid === activeTabId) {
                 const term = document.getElementById('terminal');
                 term.innerText = text; term.style.color = color || '#10b981';
@@ -817,7 +820,7 @@
             const edT = editors[`${activeTabId}_tests`];
             if (edT) monaco.editor.setModelLanguage(edT.getModel(), lang);
             triggerSave();
-            generateBoilerplate(lang);
+            generateBoilerplate(lang).then(() => generateTests(true));
         }
 
         function saveTerminal(text, color, tabId) {
@@ -846,7 +849,7 @@
             } finally { genMgr.release(); }
         }
 
-        let testGenTimer = null, testGenCountdown = 0;
+        let testGenTimer = null;
 
         function getGenTestBtns() { return document.querySelectorAll('[data-gentests]'); }
 
@@ -855,39 +858,27 @@
             getGenTestBtns().forEach(b => { b.innerHTML = 'Gen Tests'; });
         }
 
-        function scheduleTestGen() {
-            cancelTestGen();
-            testGenCountdown = 9;
-            const update = () => getGenTestBtns().forEach(b => {
-                b.innerHTML = `Tests ready in ${testGenCountdown}s.. <span style="color:#f87171;cursor:pointer" onclick="event.stopPropagation();cancelTestGen()">[cancel]</span>`;
-            });
-            update();
-            testGenTimer = setInterval(() => {
-                testGenCountdown--;
-                if (testGenCountdown <= 0) { clearInterval(testGenTimer); testGenTimer = null; generateTests(true); return; }
-                update();
-            }, 1000);
-        }
-
         async function generateTests(silent) {
             cancelTestGen();
             const tabId = activeTabId;
             const code = editors[`${tabId}_code`]?.getValue() || '';
-            const key = `tests_${tabId}_${code.length}`;
+            const key = `tests_${tabId}`;
             if (!genMgr.acquire(key)) return;
             const btns = getGenTestBtns();
             btns.forEach(b => { b.innerHTML = 'Generating...'; b.classList.add('animate-pulse'); });
             if (!silent) termSpinner('Generating tests...', tabId);
+            else setStatus('Generating tests...');
             try {
                 const lang = tabs[tabId].lang || 'python';
-                const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[tabId].statement}\nCode:\n${code}\n\nPrint a table of pass/fail results. Return ONLY code, NO markdown fences.`;
+                const prompt = `Generate unit tests for this ${lang} code. Problem: ${tabs[tabId].statement}\nCode:\n${code}\n\nUse console.table to print a table of pass/fail results. Return ONLY code, NO markdown fences.`;
                 const raw = await geminiCall(prompt);
                 const script = raw.replace(/```\w*/g, '').replace(/```/g, '').trim();
                 const ed = editors[`${tabId}_tests`];
                 if (ed) ed.setValue(script);
                 tabs[tabId].steps.tests = script;
                 triggerSave();
-                if (!silent) { termDone('>>> Tests generated. Running...', '#10b981', tabId); if (activeTabId === tabId) await runTests(); }
+                if (!silent) termDone('>>> Tests generated.', '#10b981', tabId);
+                else setStatus('Tests generated');
             } catch(e) { if (!silent) termDone('>>> ERROR: ' + e.message, '#f87171', tabId); genMgr.clearSection(key); }
             finally { btns.forEach(b => { b.innerHTML = 'Gen Tests'; b.classList.remove('animate-pulse'); }); genMgr.release(); }
         }
@@ -981,7 +972,7 @@
                     termDone(d.output, d.success ? '#10b981' : '#f87171', tabId);
                 } catch(e) { termDone('ERROR: ' + e.message, '#f87171', tabId); }
             } else { termDone(`[ERROR] ${selectedLang} requires server.`, '#f87171', tabId); }
-            if (runSuccess && activeTabId === tabId && !(editors[`${tabId}_tests`]?.getValue()?.trim())) scheduleTestGen();
+            if (runSuccess && activeTabId === tabId) setStatus('Run complete');
         }
 
         async function runTests() {
@@ -999,6 +990,7 @@
             }
 
             termSpinner('Running code + tests...', tabId);
+            hideTermTable();
             if (selectedLang === 'javascript') {
                 const r = await runJsInSandbox(fullScript);
                 termDone(r.output || '(no output)', r.success ? '#10b981' : '#f87171', tabId);
