@@ -372,7 +372,7 @@
         let safeCodeHashes = {};
         let serverAvailable = false;
         let maximizedEditor = null;
-        let debugTraceActive = false, debugDecorations = [], lastDebugHash = null, lastDebugTrace = null;
+        let debugTraceActive = false, debugDecorations = [], debugTraceIdx = 0;
 
         let isManuallyCollapsed = false;
 
@@ -433,6 +433,7 @@
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
             if (e.key === 'Escape' && debugTraceActive) { e.preventDefault(); closeDebugTrace(); return; }
+            if (debugTraceActive && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); stepDebugTrace(e.key === 'ArrowDown' ? 1 : -1); return; }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
         });
 
@@ -616,7 +617,6 @@
         function selectTab(id) {
             cancelTestGen();
             closeDebugTrace();
-            lastDebugHash = null; lastDebugTrace = null;
             activeTabId = id;
             genMgr.clearAll();
 
@@ -675,6 +675,11 @@
             term.innerText = tabs[id].terminalOutput || '';
             term.style.color = tabs[id].terminalColor || '#10b981';
             renderTermTable(tabs[id].terminalTable);
+
+            // Restore debug trace if present
+            if (tabs[id].debugTrace && tabs[id].debugTrace.length) {
+                showDebugTrace(tabs[id].debugTrace, id);
+            }
 
             renderTabs();
             setView('workbook');
@@ -739,7 +744,7 @@
                 if (d.error) throw new Error(d.error);
                 return d.text;
             }
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`, {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${key}`, {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
             });
@@ -1785,9 +1790,9 @@
             if (lang !== 'javascript') { termDone('[DEBUG] Only JavaScript supported for trace debugging.', '#facc15', tabId); return; }
             const hash = await md5(code);
             // Reuse cached trace if code unchanged
-            if (hash === lastDebugHash && lastDebugTrace && lastDebugTrace.length) {
-                showDebugTrace(lastDebugTrace, tabId);
-                termDone(`>>> Debug trace (cached): ${lastDebugTrace.length} steps.`, '#10b981', tabId);
+            if (hash === tabs[tabId].debugHash && tabs[tabId].debugTrace?.length) {
+                showDebugTrace(tabs[tabId].debugTrace, tabId);
+                termDone(`>>> Debug trace (cached): ${tabs[tabId].debugTrace.length} steps.`, '#10b981', tabId);
                 return;
             }
             const codeLines = code.split('\n');
@@ -1818,8 +1823,9 @@ ${code}`;
                 termSpinner('Running instrumented code...', tabId);
                 const result = await runDebugSandbox(instrumented);
                 if (result.traceData && result.traceData.length) {
-                    lastDebugHash = hash;
-                    lastDebugTrace = result.traceData;
+                    tabs[tabId].debugHash = hash;
+                    tabs[tabId].debugTrace = result.traceData;
+                    triggerSave();
                     showDebugTrace(result.traceData, tabId);
                     termDone(result.output || `>>> Debug trace: ${result.traceData.length} steps captured.`, '#10b981', tabId);
                 } else {
@@ -1871,6 +1877,7 @@ ${code}`;
             const panel = document.getElementById('debugTracePanel');
             if (!panel || !data || !data.length) return;
             debugTraceActive = true;
+            debugTraceIdx = 0;
             panel.style.display = 'block';
             panel.style.flex = '1';
             // Build table — hide _srcLine from display but keep as data attr
@@ -1889,19 +1896,31 @@ ${code}`;
             });
             html += '</tbody></table>';
             panel.innerHTML = html;
-            // Auto-highlight first row
-            const firstRow = panel.querySelector('tr[data-srcline]');
+            const firstRow = panel.querySelector('tr[data-idx="0"]');
             if (firstRow) highlightTraceLine(parseInt(firstRow.dataset.srcline) || 0, firstRow);
             setTimeout(() => { const ed = editors[`${tabId}_code`]; if (ed && ed.layout) ed.layout(); }, 50);
+        }
+
+        function stepDebugTrace(dir) {
+            const panel = document.getElementById('debugTracePanel');
+            if (!panel) return;
+            const rows = panel.querySelectorAll('tr[data-idx]');
+            if (!rows.length) return;
+            debugTraceIdx = Math.max(0, Math.min(rows.length - 1, debugTraceIdx + dir));
+            const row = rows[debugTraceIdx];
+            highlightTraceLine(parseInt(row.dataset.srcline) || 0, row);
+            row.scrollIntoView({ block: 'nearest' });
         }
 
         function highlightTraceLine(srcLine, rowEl) {
             const ed = editors[`${activeTabId}_code`];
             if (!ed) return;
-            // Highlight row in table
             const panel = document.getElementById('debugTracePanel');
             panel.querySelectorAll('tr.trace-active').forEach(r => r.classList.remove('trace-active'));
-            if (rowEl) rowEl.classList.add('trace-active');
+            if (rowEl) {
+                rowEl.classList.add('trace-active');
+                debugTraceIdx = parseInt(rowEl.dataset.idx) || 0;
+            }
             // Highlight line in editor
             if (srcLine > 0) {
                 debugDecorations = ed.deltaDecorations(debugDecorations, [
