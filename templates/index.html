@@ -42,9 +42,11 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
 
         /* Contextual Popup */
-        #ctxPopup { position: fixed; z-index: 600; background: #0f172a; border: 1px solid #3b82f6; border-radius: 10px; padding: 6px; box-shadow: 0 8px 32px rgba(0,0,0,.6); display: none; width: 320px; }
-        #ctxPopup input { background: transparent; border: none; outline: none; color: #f8fafc; font-size: 13px; width: 100%; padding: 6px 8px; font-family: 'Inter', sans-serif; }
-        #ctxPopup input::placeholder { color: #475569; }
+        #ctxPopup { position: fixed; z-index: 600; background: #0f172a; border: 1px solid #3b82f6; border-radius: 10px; padding: 6px; box-shadow: 0 8px 32px rgba(0,0,0,.6); display: none; min-width: 240px; max-width: 480px; width: auto; }
+        #ctxPopup textarea { background: transparent; border: none; outline: none; color: #f8fafc; font-size: 13px; width: 100%; padding: 6px 8px; font-family: 'Inter', sans-serif; resize: none; overflow: hidden; min-height: 28px; max-height: 120px; }
+        #ctxPopup textarea::placeholder { color: #475569; }
+        .chat-input { resize: none; overflow: hidden; min-height: 32px; max-height: 120px; }
+        .ctx-citation { background: #1e293b; border-left: 2px solid #3b82f6; padding: 4px 8px; margin-bottom: 4px; font-size: 10px; color: #64748b; font-style: italic; max-height: 40px; overflow: hidden; border-radius: 4px; }
 
         /* Chat Sidebar */
         #chatPanel { width: 260px; flex-shrink: 0; border-left: 1px solid #1e293b; background: #0a0f1a; display: none; flex-direction: column; }
@@ -292,11 +294,11 @@
             <div id="chatThreads" class="flex-1 overflow-y-auto p-3 custom-scroll"></div>
             <div id="chatInputBar" class="p-3 border-t border-slate-800 hidden">
               <div class="relative">
-                <input id="threadReplyInput" type="text" placeholder="Reply to thread..." class="w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter')sendThreadReply()" oninput="handleReplyAtMention(this)">
+                <textarea id="threadReplyInput" rows="1" placeholder="Reply to thread..." class="chat-input w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendThreadReply();}" oninput="handleReplyAtMention(this);autoGrowInput(this)"></textarea>
               </div>
             </div>
             <div class="p-3 border-t border-slate-800">
-              <input id="adHocChatInput" type="text" placeholder="Ask anything..." class="w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter')sendAdHocChat()" oninput="handleReplyAtMention(this)">
+              <textarea id="adHocChatInput" rows="1" placeholder="Ask anything..." class="chat-input w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdHocChat();}" oninput="handleReplyAtMention(this);autoGrowInput(this)"></textarea>
             </div>
           </div>
          </div>
@@ -309,7 +311,7 @@
 
     <!-- Contextual Popup -->
     <div id="ctxPopup">
-      <input id="ctxInput" type="text" placeholder="Ask about this selection..." onkeydown="if(event.key==='Enter')submitCtxQuestion();if(event.key==='Escape'){event.stopPropagation();hideCtxPopup();}" oninput="handleCtxAtMention(this)">
+      <textarea id="ctxInput" rows="1" placeholder="Ask about this selection..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitCtxQuestion();}if(event.key==='Escape'){event.stopPropagation();hideCtxPopup();}" oninput="handleCtxAtMention(this);autoGrowInput(this);autoGrowPopup(this)"></textarea>
     </div>
     <div id="atMentionPopup"></div>
   </div>
@@ -411,6 +413,7 @@
             if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); runCode(); }
             if ((e.ctrlKey || e.metaKey) && e.key === '"') { e.preventDefault(); generateTests(); }
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); toggleVoice(); }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '?') { e.preventDefault(); clickNearestValidate(); }
             if (e.key === 'Escape' && micActive) { stopMic(); }
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
@@ -1102,6 +1105,27 @@
             setTimeout(() => inp.focus(), 50);
         }
 
+        function autoGrowInput(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+        }
+
+        function autoGrowPopup(el) {
+            const popup = document.getElementById('ctxPopup');
+            const words = el.value.trim().split(/\s+/).filter(Boolean).length;
+            const w = Math.min(240 + words * 24, 480);
+            popup.style.width = w + 'px';
+        }
+
+        function clickNearestValidate() {
+            const btns = document.querySelectorAll('[data-genaction]');
+            for (const b of btns) {
+                if (b.textContent.trim().toLowerCase().includes('validate') && b.offsetParent !== null) {
+                    b.click(); return;
+                }
+            }
+        }
+
         function hideCtxPopup() {
             document.getElementById('ctxPopup').style.display = 'none';
             document.getElementById('atMentionPopup').style.display = 'none';
@@ -1319,6 +1343,7 @@
                 const t = threads[activeThreadView];
                 let html = `<div class="thread-bubble" style="border-color:#334155">`;
                 html += `<div class="flex justify-between items-center mb-2"><span class="thread-hash" id="hash-${t.hash}" onclick="copyHash('${t.hash}')">${t.hash}</span><span class="text-[9px] text-slate-600 uppercase">${t.source}</span></div>`;
+                if (t.selection) html += `<div class="ctx-citation">${esc(t.selection.length > 120 ? t.selection.slice(0,120) + '...' : t.selection)}</div>`;
                 t.messages.forEach((m, i) => {
                     if (i === 0) {
                         html += `<div class="thread-q">${esc(m.question)}</div>`;
@@ -1344,6 +1369,7 @@
                 const qClip = t.question.length > 50 ? t.question.slice(0, 50) + '...' : t.question;
                 html += `<div class="thread-bubble">`;
                 html += `<div class="flex justify-between items-center mb-1"><span class="thread-hash" id="hash-${hash}" onclick="event.stopPropagation();copyHash('${hash}')">${hash}</span><span class="text-[9px] text-slate-600 uppercase">${t.source}</span></div>`;
+                if (t.selection) html += `<div class="ctx-citation">${esc(t.selection.length > 80 ? t.selection.slice(0,80) + '...' : t.selection)}</div>`;
                 html += `<div class="thread-q">${esc(qClip)}</div>`;
                 if (firstMsg) html += `<div class="thread-a prose prose-invert prose-sm max-w-none" style="max-height:80px;overflow:hidden">${marked.parse(firstMsg.answer)}</div>`;
                 else html += `<div class="text-blue-400 text-[10px] animate-pulse mt-1">Thinking...</div>`;
