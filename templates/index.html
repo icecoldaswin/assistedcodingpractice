@@ -25,12 +25,21 @@
         .term-tbl .pass { color: #10b981; }
         .term-tbl .fail { color: #f87171; }
         .term-tbl tr.trace-active td { background: #1e3a5f; }
+        .term-tbl tr.trace-bug td { background: rgba(239,68,68,0.15); }
+        .term-tbl tr.trace-active.trace-bug td { background: rgba(239,68,68,0.3); }
         .term-tbl tr[data-srcline] { cursor: pointer; }
+        .term-tbl .col-narration { display: none; }
+        .term-tbl.show-narration .col-narration { display: table-cell; }
+        .debug-bug-highlight { background: rgba(239,68,68,0.18); }
+        .debug-bug-glyph { background: #ef4444; width: 4px !important; margin-left: 3px; border-radius: 2px; }
         #debugTracePanel { display: none; background: #000; border-left: 1px solid #1e293b; overflow: auto; scrollbar-width: thin; }
         #debugTracePanel .trace-hdr { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #1e293b; background: #0f172a; position: sticky; top: 0; z-index: 1; }
         #debugTracePanel .trace-hdr span { font-size: 9px; font-weight: 900; color: #eab308; text-transform: uppercase; letter-spacing: .05em; }
-        #debugTracePanel .trace-hdr button { font-size: 11px; color: #64748b; cursor: pointer; padding: 2px 6px; }
+        #debugTracePanel .trace-hdr button { font-size: 11px; color: #64748b; cursor: pointer; padding: 2px 6px; background: none; border: none; }
         #debugTracePanel .trace-hdr button:hover { color: #f87171; }
+        #debugTracePanel .trace-hdr .trace-play-btn { color: #10b981; }
+        #debugTracePanel .trace-hdr .trace-play-btn:hover { color: #34d399; }
+        #debugTracePanel .trace-hdr .trace-narr-btn.active { color: #eab308; }
         .debug-line-highlight { background: rgba(234,179,8,0.15); }
         .debug-line-highlight-glyph { background: #eab308; width: 4px !important; margin-left: 3px; border-radius: 2px; }
         
@@ -373,6 +382,7 @@
         let serverAvailable = false;
         let maximizedEditor = null;
         let debugTraceActive = false, debugDecorations = [], debugTraceIdx = 0;
+        let debugPlayTimer = null, debugNarrationVisible = false;
 
         let isManuallyCollapsed = false;
 
@@ -432,8 +442,9 @@
             if (e.key === 'Escape' && micActive) { stopMic(); }
             if (e.key === 'Escape' && ttsEnabled) { speechSynthesis.cancel(); }
             if (e.key === 'Escape' && testGenTimer) { e.preventDefault(); cancelTestGen(); return; }
-            if (e.key === 'Escape' && debugTraceActive) { e.preventDefault(); closeDebugTrace(); return; }
-            if (debugTraceActive && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); stepDebugTrace(e.key === 'ArrowDown' ? 1 : -1); return; }
+            if (e.key === 'Escape' && debugTraceActive) { e.preventDefault(); debugPause(); closeDebugTrace(); return; }
+            if (debugTraceActive && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); debugPause(); stepDebugTrace(e.key === 'ArrowDown' ? 1 : -1); return; }
+            if (debugTraceActive && e.key === ' ' && !e.target.closest('textarea,input,.monaco-editor')) { e.preventDefault(); debugPlayTimer ? debugPause() : debugPlay(); return; }
             if (e.key === 'Escape' && maximizedEditor) { toggleMaximize(maximizedEditor); }
         });
 
@@ -1789,7 +1800,6 @@
             const lang = tabs[tabId].lang || 'javascript';
             if (lang !== 'javascript') { termDone('[DEBUG] Only JavaScript supported for trace debugging.', '#facc15', tabId); return; }
             const hash = await md5(code);
-            // Reuse cached trace if code unchanged
             if (hash === tabs[tabId].debugHash && tabs[tabId].debugTrace?.length) {
                 showDebugTrace(tabs[tabId].debugTrace, tabId);
                 termDone(`>>> Debug trace (cached): ${tabs[tabId].debugTrace.length} steps.`, '#10b981', tabId);
@@ -1799,19 +1809,25 @@
             const lineMap = codeLines.map((l, i) => `${i + 1}: ${l}`).join('\n');
             termSpinner('AI analyzing code for trace instrumentation...', tabId);
             try {
-                const prompt = `Instrument this JavaScript code for step-by-step debugging. Insert \`__trace({step, srcLine, line, vars, condition})\` calls:
-- After every variable assignment: __trace({step: N, srcLine: <original line number>, line: "description", vars: {varName: varValue, ...}})
-- At every condition evaluation: __trace({step: N, srcLine: <original line number>, line: "if/while condition", condition: "expression", result: booleanResult, vars: {relevant vars}})
-- At loop iterations: include loop counter in vars
-- At return statements: __trace with the return value
+                const prompt = `You are a code debugger. Instrument this JavaScript code by inserting __trace() calls.
 
-Rules:
-- step must increment from 1
-- srcLine must be the ORIGINAL source line number (1-based) from the code below
-- vars must capture ALL variables in scope at that point
-- Do NOT define __trace, it is pre-defined
-- Return ONLY the instrumented code, NO markdown fences, NO explanation
-- Keep the original logic intact
+__trace takes ONE object: { step, srcLine, narration, bug, vars }
+- step: integer starting at 1, incrementing
+- srcLine: the ORIGINAL line number (1-based) from the numbered source below
+- narration: a SHORT human-readable sentence describing what is happening, e.g. "Initialize result array as empty", "Loop iteration i=2, checking if nums[2]=5 > target=3", "Return the final answer [1,2]". Be SPECIFIC with actual values, not generic descriptions.
+- bug: null normally. If you detect a likely bug at this step (off-by-one, wrong comparison, missing edge case, etc.), set bug to a short string explaining the issue, e.g. "Off-by-one: should be i < n, not i <= n"
+- vars: an object with ALL variables currently in scope and their CURRENT values. Use JSON.parse(JSON.stringify(v)) for objects/arrays to capture snapshots. NEVER leave vars empty — at minimum include function parameters.
+
+CRITICAL RULES:
+- vars must ALWAYS contain every variable in scope with its current value. This is the most important field.
+- For arrays/objects in vars, pass them through JSON.parse(JSON.stringify(x)) to snapshot.
+- Place __trace AFTER assignments so vars reflect the new value.
+- Place __trace at condition checks with the condition result in narration.
+- Place __trace inside loops showing iteration values.
+- Place __trace before return statements showing the return value.
+- Do NOT define __trace — it is pre-defined.
+- Return ONLY the instrumented code. NO markdown fences. NO explanation.
+- Keep the original logic completely intact.
 
 Numbered source:
 ${lineMap}
@@ -1854,9 +1870,10 @@ ${code}`;
                     function __trace(obj) {
                         const row = {Step: obj.step || __traces.length + 1};
                         if (obj.srcLine) row._srcLine = obj.srcLine;
-                        row.Line = obj.line || '';
-                        if (obj.condition !== undefined) { row.Condition = obj.condition; row.Result = obj.result; }
-                        if (obj.vars) { for (const [k,v] of Object.entries(obj.vars)) row[k] = typeof v === 'object' ? JSON.stringify(v) : v; }
+                        if (obj.narration) row._narration = obj.narration;
+                        if (obj.bug) row._bug = obj.bug;
+                        row.Line = obj.narration ? obj.narration.slice(0,40) : (obj.line || '');
+                        if (obj.vars) { for (const [k,v] of Object.entries(obj.vars)) row[k] = typeof v === 'object' ? JSON.stringify(v) : String(v); }
                         __traces.push(row);
                     }
                     const _send = (...a) => parent.postMessage(a.map(v => typeof v === 'object' ? JSON.stringify(v,null,2) : String(v)).join(' '), '*');
@@ -1878,20 +1895,36 @@ ${code}`;
             if (!panel || !data || !data.length) return;
             debugTraceActive = true;
             debugTraceIdx = 0;
+            debugPause();
             panel.style.display = 'block';
             panel.style.flex = '1';
-            // Build table — hide _srcLine from display but keep as data attr
-            const displayKeys = Object.keys(data[0]).filter(k => k !== '_srcLine');
-            let html = '<div class="trace-hdr"><span>🐛 Debug Trace</span><button onclick="closeDebugTrace()" title="Close (Esc)">✕</button></div>';
-            html += '<table class="term-tbl"><thead><tr>' + displayKeys.map(k => `<th>${esc(String(k))}</th>`).join('') + '</tr></thead><tbody>';
+            const hiddenKeys = new Set(['_srcLine', '_narration', '_bug']);
+            const displayKeys = Object.keys(data[0]).filter(k => !hiddenKeys.has(k));
+            const hasNarration = data.some(r => r._narration);
+            let html = '<div class="trace-hdr">';
+            html += '<span>🐛 Debug Trace</span>';
+            html += '<div style="display:flex;gap:4px;align-items:center">';
+            html += `<button class="trace-play-btn" onclick="debugPlayTimer?debugPause():debugPlay()" title="Play/Pause (Space)">▶</button>`;
+            if (hasNarration) html += `<button class="trace-narr-btn" onclick="toggleNarrationCol()" title="Toggle narration column">📝</button>`;
+            html += '<button onclick="closeDebugTrace()" title="Close (Esc)">✕</button>';
+            html += '</div></div>';
+            html += `<table class="term-tbl" id="debugTbl"><thead><tr>`;
+            displayKeys.forEach(k => { html += `<th>${esc(String(k))}</th>`; });
+            if (hasNarration) html += '<th class="col-narration">Narration</th>';
+            html += '</tr></thead><tbody>';
             data.forEach((r, i) => {
                 const srcLine = r._srcLine || '';
-                html += `<tr data-srcline="${srcLine}" data-idx="${i}" onclick="highlightTraceLine(${srcLine}, this)">`;
-                html += displayKeys.map(k => {
+                const bug = r._bug || '';
+                html += `<tr data-srcline="${srcLine}" data-idx="${i}"${bug ? ' class="trace-bug"' : ''} onclick="debugPause();highlightTraceLine(${srcLine}, this)">`;
+                displayKeys.forEach(k => {
                     const v = r[k]; const s = String(v ?? '');
                     const cls = /^(true)$/i.test(s) ? 'pass' : /^(false)$/i.test(s) ? 'fail' : '';
-                    return `<td class="${cls}">${esc(s)}</td>`;
-                }).join('');
+                    html += `<td class="${cls}">${esc(s)}</td>`;
+                });
+                if (hasNarration) {
+                    const narr = (bug ? '🐛 BUG: ' + bug + ' — ' : '') + (r._narration || '');
+                    html += `<td class="col-narration" style="${bug ? 'color:#f87171;font-weight:700' : 'color:#94a3b8'}">${esc(narr)}</td>`;
+                }
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -1899,6 +1932,15 @@ ${code}`;
             const firstRow = panel.querySelector('tr[data-idx="0"]');
             if (firstRow) highlightTraceLine(parseInt(firstRow.dataset.srcline) || 0, firstRow);
             setTimeout(() => { const ed = editors[`${tabId}_code`]; if (ed && ed.layout) ed.layout(); }, 50);
+        }
+
+        function toggleNarrationCol() {
+            const tbl = document.getElementById('debugTbl');
+            if (!tbl) return;
+            debugNarrationVisible = !debugNarrationVisible;
+            tbl.classList.toggle('show-narration', debugNarrationVisible);
+            const btn = document.querySelector('.trace-narr-btn');
+            if (btn) btn.classList.toggle('active', debugNarrationVisible);
         }
 
         function stepDebugTrace(dir) {
@@ -1910,6 +1952,50 @@ ${code}`;
             const row = rows[debugTraceIdx];
             highlightTraceLine(parseInt(row.dataset.srcline) || 0, row);
             row.scrollIntoView({ block: 'nearest' });
+            speakTraceStep(debugTraceIdx);
+        }
+
+        function speakTraceStep(idx) {
+            if (!ttsEnabled || !activeTabId) return;
+            const trace = tabs[activeTabId]?.debugTrace;
+            if (!trace || !trace[idx]) return;
+            const r = trace[idx];
+            let text = '';
+            if (r._bug) text += 'Bug detected: ' + r._bug + '. ';
+            if (r._narration) text += r._narration;
+            else if (r.Line) text += r.Line;
+            if (text) {
+                speechSynthesis.cancel();
+                const utt = new SpeechSynthesisUtterance(text);
+                utt.rate = 1.15;
+                speechSynthesis.speak(utt);
+            }
+        }
+
+        function debugPlay() {
+            if (!debugTraceActive || !activeTabId) return;
+            const trace = tabs[activeTabId]?.debugTrace;
+            if (!trace) return;
+            const btn = document.querySelector('.trace-play-btn');
+            if (btn) btn.innerText = '⏸';
+            const advance = () => {
+                if (debugTraceIdx >= trace.length - 1) { debugPause(); return; }
+                stepDebugTrace(1);
+                const r = trace[debugTraceIdx];
+                const delay = r._bug ? 3000 : (r._narration?.length > 60 ? 2000 : 1200);
+                debugPlayTimer = setTimeout(advance, delay);
+            };
+            speakTraceStep(debugTraceIdx);
+            const r = trace[debugTraceIdx];
+            const delay = r?._bug ? 3000 : 1200;
+            debugPlayTimer = setTimeout(advance, delay);
+        }
+
+        function debugPause() {
+            clearTimeout(debugPlayTimer);
+            debugPlayTimer = null;
+            const btn = document.querySelector('.trace-play-btn');
+            if (btn) btn.innerText = '▶';
         }
 
         function highlightTraceLine(srcLine, rowEl) {
@@ -1921,19 +2007,26 @@ ${code}`;
                 rowEl.classList.add('trace-active');
                 debugTraceIdx = parseInt(rowEl.dataset.idx) || 0;
             }
-            // Highlight line in editor
             if (srcLine > 0) {
+                const isBug = rowEl?.classList.contains('trace-bug');
                 debugDecorations = ed.deltaDecorations(debugDecorations, [
-                    { range: new monaco.Range(srcLine, 1, srcLine, 1), options: { isWholeLine: true, className: 'debug-line-highlight', glyphMarginClassName: 'debug-line-highlight-glyph' } }
+                    { range: new monaco.Range(srcLine, 1, srcLine, 1), options: {
+                        isWholeLine: true,
+                        className: isBug ? 'debug-bug-highlight' : 'debug-line-highlight',
+                        glyphMarginClassName: isBug ? 'debug-bug-glyph' : 'debug-line-highlight-glyph'
+                    }}
                 ]);
                 ed.revealLineInCenter(srcLine);
             }
         }
 
         function closeDebugTrace() {
+            debugPause();
+            speechSynthesis.cancel();
             const panel = document.getElementById('debugTracePanel');
             if (panel) { panel.style.display = 'none'; panel.style.flex = ''; panel.innerHTML = ''; }
             debugTraceActive = false;
+            debugNarrationVisible = false;
             const ed = editors[`${activeTabId}_code`];
             if (ed) debugDecorations = ed.deltaDecorations(debugDecorations, []);
             setTimeout(() => { if (ed && ed.layout) ed.layout(); }, 50);
