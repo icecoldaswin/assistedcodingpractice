@@ -630,9 +630,10 @@
                     value: tabs[id].steps[key] || '',
                     language: lang, theme: 'vs-dark',
                     automaticLayout: true, minimap: {enabled: false}, fontSize: 13,
-                    wordWrap: 'on',                 // Enables wrapping
-                    wrappingStrategy: 'advanced',   // Helps with performance in large files
-                    wrappingIndent: 'indent'        // Keeps wrapped lines aligned with the parent
+                    wordWrap: 'on',
+                    wrappingStrategy: 'advanced',
+                    wrappingIndent: 'indent',
+                    scrollbar: { alwaysConsumeMouseWheel: false }
                 });
                 ed.onDidChangeModelContent(() => { tabs[id].steps[key] = ed.getValue(); triggerSave(); });
                 ed.onDidFocusEditorText(() => { lastFocusedEditorKey = `${id}_${key}`; });
