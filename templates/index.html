@@ -1121,15 +1121,16 @@
         function clickNearestValidate() {
             if (!activeTabId) return;
             const codeKey = `${activeTabId}_code`;
-            // If focused in code editor, handle generate or review
             if (lastFocusedEditorKey === codeKey || editors[codeKey]?.hasTextFocus()) {
                 handleCodeEditorAction(); return;
             }
-            // Otherwise click nearest validate button
-            const btns = document.querySelectorAll('[data-genaction]');
-            for (const b of btns) {
-                if (b.textContent.trim().toLowerCase().includes('validate') && b.offsetParent !== null) {
-                    b.click(); return;
+            // Find which step editor is focused and click its validate button
+            const stepKey = lastFocusedEditorKey?.split('_').pop();
+            if (stepKey && /^s[1-4]$/.test(stepKey)) {
+                const editorDom = document.getElementById('editor-' + stepKey);
+                if (editorDom) {
+                    const btn = editorDom.parentElement.querySelector('[data-genaction]');
+                    if (btn) { btn.click(); return; }
                 }
             }
         }
