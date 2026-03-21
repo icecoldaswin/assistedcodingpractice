@@ -72,7 +72,15 @@ function stopMic() {
 }
 
 function insertVoiceText(text) {
-    // If code editor is focused, redirect voice to chat panel instead
+    // In interview mode, always route to chat
+    if (isActiveTabInterview && isActiveTabInterview()) {
+        showChatPanel();
+        const adHoc = document.getElementById('adHocChatInput');
+        adHoc.value += (adHoc.value ? ' ' : '') + text;
+        adHoc.focus();
+        return;
+    }
+    // If code editor is focused, redirect voice to chat panel
     if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
         const ed = editors[lastFocusedEditorKey];
         if (ed.hasTextFocus()) {
