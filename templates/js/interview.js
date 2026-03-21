@@ -134,10 +134,13 @@ async function startInterview(companyIdx) {
     updateModeButton();
     refreshSidebar();
 
-    // Show loading screen while AI prepares the problem
+    // Show loading screen while AI prepares the problem — clear stale UI first
+    activeTabId = null;
     document.getElementById('activeContent').classList.add('hidden');
-    document.getElementById('emptyState').classList.remove('hidden');
-    document.getElementById('emptyState').innerHTML = '<div class="text-slate-500 text-xs font-black uppercase tracking-widest animate-pulse">Interviewer preparing your problem...</div>';
+    document.getElementById('tabsHeader').innerHTML = '';
+    const es = document.getElementById('emptyState');
+    es.innerHTML = '<div class="text-slate-500 text-xs font-black uppercase tracking-widest animate-pulse">Interviewer preparing your problem...</div>';
+    es.classList.remove('hidden');
 
     // Ask AI for a problem
     termSpinner('Interviewer preparing problem...');
@@ -389,6 +392,54 @@ function patchInterviewChat() {
 // Hook: when user sends ad-hoc chat during interview, treat as talking to interviewer
 function isInterviewTab() {
     return interviewState && !interviewState.ended && activeTabId === interviewState.tabId;
+}
+
+function exitInterviewMode() {
+    // Collect all interview tabs
+    const ivTabs = Object.values(tabs).filter(t => t.interview);
+
+    // End interview if still active
+    if (interviewState && !interviewState.ended) {
+        interviewState.ended = true;
+        if (micActive) stopMic();
+        speechSynthesis.cancel();
+    }
+    interviewState = null;
+    updateModeButton();
+
+    // Ask if user wants to practice any interview problems
+    if (ivTabs.length) {
+        const names = ivTabs.map(t => t.title.replace(/^🎤\s*/, '')).join(', ');
+        if (confirm('Move interview problems to practice mode?\n\n' + names)) {
+            ivTabs.forEach(t => {
+                const id = 'tab-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5);
+                tabs[id] = {
+                    id, title: t.title.replace(/^🎤\s*/, ''),
+                    statement: t.statement, lang: t.lang,
+                    steps: { s1: '', s2: '', s3: '', s4: '', code: t.steps?.code || '', tests: '' },
+                    aiAnalysis: ''
+                };
+                openTabs.add(id);
+            });
+        }
+    }
+
+    // Show practice mode
+    activeTabId = null;
+    refreshSidebar();
+    const practiceTab = Object.values(tabs).find(t => !t.interview);
+    if (practiceTab) {
+        openTabs.add(practiceTab.id);
+        selectTab(practiceTab.id);
+    } else {
+        document.getElementById('activeContent').classList.add('hidden');
+        document.getElementById('tabsHeader').innerHTML = '';
+        const es = document.getElementById('emptyState');
+        es.innerHTML = '<p class="font-black text-xs uppercase tracking-[0.5em] shrink-0">No Active Workspace</p><div id="helpContent" class="mt-8 overflow-y-auto custom-scroll px-4 text-slate-800" style="max-width:520px;font-size:12px;font-weight:700;line-height:1.7"></div>';
+        es.classList.remove('hidden');
+        renderHelp();
+    }
+    triggerSave();
 }
 
 function showMicGate() {

@@ -107,8 +107,16 @@ function closeTab(id) {
     openTabs.delete(id);
     if (activeTabId === id) {
         const remaining = [...openTabs].filter(oid => tabs[oid] && isTabCurrentMode(tabs[oid]));
-        if (remaining.length) selectTab(remaining[0]);
-        else { activeTabId = null; document.getElementById('activeContent').classList.add('hidden'); document.getElementById('emptyState').classList.remove('hidden'); }
+        if (remaining.length) {
+            selectTab(remaining[0]);
+        } else if (interviewState && !interviewState.ended) {
+            // All interview tabs closed — prompt to exit interview mode
+            exitInterviewMode();
+        } else {
+            activeTabId = null;
+            document.getElementById('activeContent').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+        }
     }
     renderTabs();
     triggerSave();
