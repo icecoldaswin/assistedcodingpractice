@@ -1,11 +1,23 @@
+function applyModeLayout(isInterview) {
+    document.getElementById('stepsGrid').style.display = isInterview ? 'none' : '';
+    document.getElementById('codeDebugRow').style.height = isInterview ? 'calc(100vh - 280px)' : '450px';
+    document.getElementById('codeActionBtns').style.display = isInterview ? 'none' : '';
+    document.getElementById('codeToolbar').style.display = isInterview ? 'none' : '';
+    document.getElementById('btn-workbook').style.display = isInterview ? 'none' : '';
+    document.getElementById('btn-reference').style.display = isInterview ? 'none' : '';
+}
+
 function selectTab(id) {
     cancelTestGen();
     closeDebugTrace();
     activeTabId = id;
     genMgr.clearAll();
 
+    // Hide everything until fully rendered
+    const content = document.getElementById('activeContent');
+    content.style.visibility = 'hidden';
     document.getElementById('emptyState').classList.add('hidden');
-    document.getElementById('activeContent').classList.remove('hidden');
+    content.classList.remove('hidden');
     document.getElementById('tabTitle').innerText = tabs[id].title;
     document.getElementById('descTitle').innerText = tabs[id].title;
     document.getElementById('descriptionBox').innerHTML = tabs[id].statement;
@@ -54,15 +66,7 @@ function selectTab(id) {
     renderTabs();
     setView('workbook');
     applyDescDock();
-
-    // Interview mode: hide steps, expand code editor, hide run/debug buttons
-    const isInterview = !!tabs[id].interview;
-    document.getElementById('stepsGrid').style.display = isInterview ? 'none' : '';
-    document.getElementById('codeDebugRow').style.height = isInterview ? 'calc(100vh - 280px)' : '450px';
-    document.getElementById('codeActionBtns').style.display = isInterview ? 'none' : '';
-    document.getElementById('codeToolbar').style.display = isInterview ? 'none' : '';
-    document.getElementById('btn-workbook').style.display = isInterview ? 'none' : '';
-    document.getElementById('btn-reference').style.display = isInterview ? 'none' : '';
+    applyModeLayout(!!tabs[id].interview);
 
     Object.keys(editors).forEach(k => hookEditorSelection(k));
 
@@ -71,6 +75,9 @@ function selectTab(id) {
     document.getElementById('chatInputBar').classList.add('hidden');
     if (chatThreads[id] && Object.keys(chatThreads[id]).length > 0) { showChatPanel(); renderChatThreads(); }
     else renderChatThreads();
+
+    // Reveal after layout is applied
+    requestAnimationFrame(() => { content.style.visibility = ''; });
 }
 
 function setView(mode) {

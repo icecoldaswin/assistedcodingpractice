@@ -18,7 +18,6 @@ function toggleInterviewMode() {
             const ivTabId = interviewState.tabId;
             endInterview().then(() => {
                 refreshSidebar();
-                // Switch to a practice tab if one exists, otherwise show empty state
                 const practiceTab = Object.values(tabs).find(t => !t.interview);
                 if (practiceTab) {
                     openTabs.add(practiceTab.id);
@@ -26,7 +25,10 @@ function toggleInterviewMode() {
                 } else {
                     activeTabId = null;
                     document.getElementById('activeContent').classList.add('hidden');
-                    document.getElementById('emptyState').classList.remove('hidden');
+                    const es = document.getElementById('emptyState');
+                    es.innerHTML = '<p class="font-black text-xs uppercase tracking-[0.5em] shrink-0">No Active Workspace</p><div id="helpContent" class="mt-8 overflow-y-auto custom-scroll px-4 text-slate-800" style="max-width:520px;font-size:12px;font-weight:700;line-height:1.7"></div>';
+                    es.classList.remove('hidden');
+                    renderHelp();
                     renderTabs();
                 }
             });
@@ -132,6 +134,11 @@ async function startInterview(companyIdx) {
     updateModeButton();
     refreshSidebar();
 
+    // Show loading screen while AI prepares the problem
+    document.getElementById('activeContent').classList.add('hidden');
+    document.getElementById('emptyState').classList.remove('hidden');
+    document.getElementById('emptyState').innerHTML = '<div class="text-slate-500 text-xs font-black uppercase tracking-widest animate-pulse">Interviewer preparing your problem...</div>';
+
     // Ask AI for a problem
     termSpinner('Interviewer preparing problem...');
     try {
@@ -184,9 +191,12 @@ Return ONLY valid JSON, no markdown fences.`;
         termDone('>>> Interview started. Talk through your approach first.');
 
     } catch (e) {
+        document.getElementById('emptyState').innerHTML = '<p class="font-black text-xs uppercase tracking-[0.5em] shrink-0">No Active Workspace</p><div id="helpContent" class="mt-8 overflow-y-auto custom-scroll px-4 text-slate-800" style="max-width:520px;font-size:12px;font-weight:700;line-height:1.7"></div>';
+        renderHelp();
         termDone('>>> Failed to start interview: ' + e.message, '#f87171');
         interviewState = null;
         updateModeButton();
+        refreshSidebar();
     }
 }
 
