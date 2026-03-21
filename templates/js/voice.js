@@ -72,12 +72,16 @@ function stopMic() {
 }
 
 function insertVoiceText(text) {
+    // If code editor is focused, redirect voice to chat panel instead
     if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
         const ed = editors[lastFocusedEditorKey];
         if (ed.hasTextFocus()) {
-            const pos = ed.getPosition();
-            ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
-            return;
+            const isCodeEditor = lastFocusedEditorKey.endsWith('_code');
+            if (!isCodeEditor) {
+                const pos = ed.getPosition();
+                ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
+                return;
+            }
         }
     }
     const el = document.activeElement;
