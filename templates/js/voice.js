@@ -121,12 +121,23 @@ function stopMic() {
 }
 
 function insertVoiceText(text) {
+    // Interview mode: voice always goes to chat, never code editor
+    if (isActiveTabInterview()) {
+        showChatPanel();
+        const adHoc = document.getElementById('adHocChatInput');
+        adHoc.value += (adHoc.value ? ' ' : '') + text;
+        autoGrowInput(adHoc);
+        return;
+    }
     if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
         const ed = editors[lastFocusedEditorKey];
         if (ed.hasTextFocus()) {
-            const pos = ed.getPosition();
-            ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
-            return;
+            // Code editor: don't type voice into it, fall through to chat
+            if (!lastFocusedEditorKey.endsWith('_code')) {
+                const pos = ed.getPosition();
+                ed.executeEdits('voice', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text }]);
+                return;
+            }
         }
     }
     const el = document.activeElement;
