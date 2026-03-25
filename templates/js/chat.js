@@ -235,12 +235,14 @@ async function sendAdHocChat() {
 function showAllThreads() {
     activeThreadView = null; replyingToThread = null;
     document.getElementById('chatInputBar').classList.add('hidden');
+    document.getElementById('adHocChatBar').classList.remove('hidden');
     renderChatThreads();
 }
 
 function openThread(hash) {
     activeThreadView = hash; replyingToThread = hash;
     document.getElementById('chatInputBar').classList.remove('hidden');
+    document.getElementById('adHocChatBar').classList.add('hidden');
     renderChatThreads();
     document.getElementById('threadReplyInput').focus();
 }

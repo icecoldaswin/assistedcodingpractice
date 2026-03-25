@@ -124,9 +124,9 @@ function insertVoiceText(text) {
     // Interview mode: voice always goes to chat, never code editor
     if (isActiveTabInterview()) {
         showChatPanel();
-        const adHoc = document.getElementById('adHocChatInput');
-        adHoc.value += (adHoc.value ? ' ' : '') + text;
-        autoGrowInput(adHoc);
+        const target = replyingToThread ? document.getElementById('threadReplyInput') : document.getElementById('adHocChatInput');
+        target.value += (target.value ? ' ' : '') + text;
+        autoGrowInput(target);
         return;
     }
     if (lastFocusedEditorKey && editors[lastFocusedEditorKey]) {
@@ -149,9 +149,10 @@ function insertVoiceText(text) {
         return;
     }
     showChatPanel();
-    const adHoc = document.getElementById('adHocChatInput');
-    adHoc.value += (adHoc.value ? ' ' : '') + text;
-    adHoc.focus();
+    const target = replyingToThread ? document.getElementById('threadReplyInput') : document.getElementById('adHocChatInput');
+    target.value += (target.value ? ' ' : '') + text;
+    autoGrowInput(target);
+    target.focus();
 }
 
 function toggleTTS() {

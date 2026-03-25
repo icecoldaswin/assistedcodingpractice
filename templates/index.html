@@ -327,7 +327,7 @@
                 <textarea id="threadReplyInput" rows="1" placeholder="Reply to thread..." class="chat-input w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendThreadReply();}" oninput="handleReplyAtMention(this);autoGrowInput(this)"></textarea>
               </div>
             </div>
-            <div class="p-3 border-t border-slate-800">
+            <div id="adHocChatBar" class="p-3 border-t border-slate-800">
               <textarea id="adHocChatInput" rows="1" placeholder="Ask anything..." class="chat-input w-full bg-slate-950 border border-slate-700 p-2 rounded-lg text-xs text-white outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdHocChat();}" oninput="handleReplyAtMention(this);autoGrowInput(this)"></textarea>
             </div>
           </div>
