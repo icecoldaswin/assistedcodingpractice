@@ -1,5 +1,6 @@
 let micRestartCount = 0;
-let micStream = null; // keep the audio stream alive to prevent macOS from killing the session
+let micStream = null;
+const MIC_MAX_RETRIES = 5;
 
 function updateMicStatus() {
     const el = document.getElementById('statusMic');
@@ -28,19 +29,19 @@ function toggleVoice() {
     updateMicStatus();
 }
 
-function createRecognition() {
+function startRecognitionSession() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
+    if (!SR) return;
+    if (recognition) { try { recognition.abort(); } catch {} }
     const rec = new SR();
-    rec.continuous = true;
+    // single-shot mode — more reliable on macOS than continuous
+    rec.continuous = false;
     rec.interimResults = true;
     rec.lang = 'en-US';
-    let startedAt = 0;
-    rec.onaudiostart = () => { console.log('[mic] audiostart'); };
-    rec.onsoundstart = () => { console.log('[mic] soundstart'); };
-    rec.onspeechstart = () => { console.log('[mic] speechstart'); };
-    rec.onstart = () => { startedAt = Date.now(); console.log('[mic] started'); };
+    let gotResult = false;
+
     rec.onresult = (e) => {
+        gotResult = true;
         micRestartCount = 0;
         let final = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -49,27 +50,33 @@ function createRecognition() {
         if (final) insertVoiceText(final);
     };
     rec.onerror = (e) => {
-        console.warn('[mic] error:', e.error, e.message);
-        if (e.error === 'no-speech' || e.error === 'aborted') return;
+        console.warn('[mic] error:', e.error);
         if (e.error === 'not-allowed') { stopMic(); return; }
+        if (e.error === 'network') { stopMic(); showSpeechBlockedPopover(); return; }
     };
     rec.onend = () => {
-        const lived = Date.now() - startedAt;
-        console.log('[mic] ended after', lived, 'ms, micActive=', micActive, 'restartCount=', micRestartCount);
         if (!micActive) return;
-        micRestartCount++;
-        const delay = Math.min(300 * Math.pow(1.5, micRestartCount - 1), 5000);
-        clearTimeout(micRestartTimer);
-        micRestartTimer = setTimeout(() => {
-            if (!micActive) return;
-            try {
-                recognition = createRecognition();
-                if (recognition) recognition.start();
-                else stopMic();
-            } catch (err) { console.error('[mic] restart failed:', err); stopMic(); }
-        }, delay);
+        if (gotResult) {
+            // successful cycle — restart immediately for next utterance
+            micRestartCount = 0;
+            startRecognitionSession();
+        } else {
+            // ended without result — count as a failed attempt
+            micRestartCount++;
+            if (micRestartCount > MIC_MAX_RETRIES) {
+                console.warn('[mic] gave up after', MIC_MAX_RETRIES, 'retries');
+                stopMic();
+                setStatus('Mic: speech service unavailable — try again');
+                return;
+            }
+            clearTimeout(micRestartTimer);
+            micRestartTimer = setTimeout(() => {
+                if (micActive) startRecognitionSession();
+            }, 500);
+        }
     };
-    return rec;
+    recognition = rec;
+    try { rec.start(); } catch (err) { console.error('[mic] start failed:', err); stopMic(); }
 }
 
 async function toggleMic() {
@@ -78,8 +85,7 @@ async function toggleMic() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert('Speech recognition not supported. Use Chrome/Edge.'); return; }
 
-    // Acquire mic stream first — this warms up the audio session on macOS
-    // and ensures permission is granted before SpeechRecognition.start()
+    // Acquire mic stream first — warms up audio session on macOS
     try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
@@ -87,18 +93,12 @@ async function toggleMic() {
         return;
     }
 
+    micActive = true;
     micRestartCount = 0;
-    recognition = createRecognition();
-    try {
-        recognition.start();
-        micActive = true;
-        btn.classList.add('text-red-400');
-        btn.classList.remove('text-slate-500');
-        updateMicStatus();
-    } catch(err) {
-        releaseMicStream();
-        alert('Mic error: ' + err.message);
-    }
+    btn.classList.add('text-red-400');
+    btn.classList.remove('text-slate-500');
+    updateMicStatus();
+    startRecognitionSession();
 }
 
 function releaseMicStream() {
@@ -150,6 +150,29 @@ function toggleTTS() {
     if (ttsEnabled) { btn.classList.add('text-green-400'); btn.classList.remove('text-slate-500'); }
     else { btn.classList.remove('text-green-400'); btn.classList.add('text-slate-500'); speechSynthesis.cancel(); }
     updateMicStatus();
+}
+
+function showSpeechBlockedPopover() {
+    let overlay = document.getElementById('speechBlockedOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'speechBlockedOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center';
+        overlay.innerHTML = `<div style="background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:32px;max-width:420px;text-align:center">
+            <div style="font-size:32px;margin-bottom:12px">🎤</div>
+            <div style="font-weight:900;font-size:14px;color:#f8fafc;margin-bottom:8px">Speech Recognition Blocked</div>
+            <div style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:16px">
+                Your browser's speech service can't reach its servers.<br>
+                This is typically caused by a firewall, VPN, DNS filter, or browser privacy settings.<br><br>
+                Interview mode requires voice and is not available on this machine.
+            </div>
+            <div style="font-size:11px;color:#475569;margin-bottom:20px">
+                Practice mode still offers a great way to prepare — full workbook, AI validation, debug trace, and code execution all work without voice.
+            </div>
+            <button onclick="document.getElementById('speechBlockedOverlay').remove()" style="background:#3b82f6;color:white;border:none;padding:8px 24px;border-radius:8px;font-weight:900;font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:.05em">Got it</button>
+        </div>`;
+        document.body.appendChild(overlay);
+    }
 }
 
 function voiceSpeak(text) {
